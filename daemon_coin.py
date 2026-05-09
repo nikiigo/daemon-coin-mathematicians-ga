@@ -1,12 +1,16 @@
 import argparse
 import csv
+import hashlib
 import html
 import json
 import logging
 import random
+import subprocess
 import sys
+import time
 import tomllib
 from dataclasses import asdict, dataclass, field, fields
+from datetime import datetime, timezone
 from pathlib import Path
 from statistics import mean
 from typing import Callable, Iterable
@@ -1705,6 +1709,55 @@ def write_best_pair(path: Path, best_pair: BestPair) -> None:
         json.dump(asdict(best_pair), output, indent=2)
 
 
+def config_hash(config: GAConfig) -> str:
+    encoded = json.dumps(asdict(config), sort_keys=True).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def current_git_commit() -> str | None:
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return None
+    return result.stdout.strip() or None
+
+
+def write_experiment_manifest(
+    path: Path,
+    config: GAConfig,
+    generation: int,
+    started_at: str,
+    elapsed_seconds: float,
+    command: list[str],
+    git_commit: str | None,
+) -> None:
+    manifest = {
+        "command": command,
+        "started_at": started_at,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "elapsed_seconds": round(elapsed_seconds, 6),
+        "completed_generation": generation,
+        "configured_generations": config.generations,
+        "config_hash_sha256": config_hash(config),
+        "git_commit": git_commit,
+        "output_dir": config.output_dir,
+        "seed": config.seed,
+        "population_size_A": config.population_size_A,
+        "population_size_B": config.population_size_B,
+        "trials_per_pair": config.trials_per_pair,
+        "sequence_length": config.sequence_length,
+        "success_condition": config.success_condition,
+        "default_strategy_type": config.default_strategy_type,
+    }
+    with path.open("w", encoding="utf-8") as output:
+        json.dump(manifest, output, indent=2)
+
+
 def pattern_text(pattern: list[int]) -> str:
     return "".join(str(bit) for bit in pattern)
 
@@ -2258,6 +2311,10 @@ def run_genetic_algorithm(
     include_best_pair: bool = False,
 ) -> tuple[Strategy, Strategy] | tuple[Strategy, Strategy, BestPair]:
     rng = random.Random(config.seed)
+    started_at = datetime.now(timezone.utc).isoformat()
+    started_monotonic = time.monotonic()
+    command = list(sys.argv)
+    git_commit = current_git_commit()
     success_condition = custom_success_condition or success_condition_from_name(
         config.success_condition
     )
@@ -2286,6 +2343,15 @@ def run_genetic_algorithm(
             rng,
         )
         save_artifacts(output_dir, generation, config, population_a, population_b, score_matrix)
+        write_experiment_manifest(
+            output_dir / "experiment_manifest.json",
+            config,
+            generation,
+            started_at,
+            time.monotonic() - started_monotonic,
+            command,
+            git_commit,
+        )
 
         best_a = max(population_a, key=lambda strategy: strategy.survival_ratio)
         best_b = max(population_b, key=lambda strategy: strategy.survival_ratio)

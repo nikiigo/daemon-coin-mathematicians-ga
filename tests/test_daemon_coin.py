@@ -3,6 +3,7 @@ import json
 import random
 import tempfile
 import unittest
+from collections import Counter
 from dataclasses import asdict
 from pathlib import Path
 
@@ -1074,6 +1075,30 @@ class DaemonCoinGATests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 load_config_file(config_path)
 
+    def test_current_config_seed_totals_match_population_caps(self):
+        config = load_config_file(Path("config.toml"))
+
+        self.assertEqual(config.population_size_A, 244)
+        self.assertEqual(config.population_size_B, 244)
+        self.assertEqual(len(config.initial_population_A), 71)
+        self.assertEqual(len(config.initial_population_B), 71)
+        self.assertEqual(
+            sum(seed.get("population", 1) for seed in config.initial_population_A),
+            config.population_size_A,
+        )
+        self.assertEqual(
+            sum(seed.get("population", 1) for seed in config.initial_population_B),
+            config.population_size_B,
+        )
+        self.assertEqual(
+            Counter(seed["strategy_type"] for seed in config.initial_population_A),
+            Counter({"first-pattern": 60, "fsm": 7, "block-lookup": 4}),
+        )
+        self.assertEqual(
+            Counter(seed["strategy_type"] for seed in config.initial_population_B),
+            Counter({"first-pattern": 60, "fsm": 7, "block-lookup": 4}),
+        )
+
     def test_validate_config_rejects_invalid_initial_population(self):
         with self.assertRaises(ValueError):
             validate_config(
@@ -1440,6 +1465,7 @@ class DaemonCoinGATests(unittest.TestCase):
             self.assertEqual(best_a.survival_ratio, 1.0)
             self.assertEqual(best_b.survival_ratio, 1.0)
             self.assertTrue((output_dir / "experiment_config.yaml").exists())
+            self.assertTrue((output_dir / "experiment_manifest.json").exists())
             self.assertTrue((output_dir / "generation_stats.csv").exists())
             self.assertTrue((output_dir / "best_pairs.csv").exists())
             self.assertTrue((output_dir / "best_pair.json").exists())
@@ -1475,6 +1501,17 @@ class DaemonCoinGATests(unittest.TestCase):
             with (output_dir / "best_pair.json").open(encoding="utf-8") as pair_file:
                 saved_best_pair = json.load(pair_file)
             self.assertEqual(saved_best_pair["score"], 1.0)
+
+            with (output_dir / "experiment_manifest.json").open(
+                encoding="utf-8",
+            ) as manifest_file:
+                manifest = json.load(manifest_file)
+            self.assertEqual(manifest["completed_generation"], 1)
+            self.assertEqual(manifest["configured_generations"], 1)
+            self.assertEqual(manifest["trials_per_pair"], 4)
+            self.assertEqual(manifest["population_size_A"], 4)
+            self.assertIn("config_hash_sha256", manifest)
+            self.assertIn("elapsed_seconds", manifest)
 
             report = (output_dir / "experiment_report.html").read_text(
                 encoding="utf-8",

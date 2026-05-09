@@ -222,6 +222,9 @@ Each run writes artifacts to `output_dir`:
 - `best_pairs.csv`: best pair per generation.
 - `best_A_strategy.json` and `best_B_strategy.json`: final best individual strategies.
 - `generation_stats.csv`: summary statistics per generation.
+- `experiment_manifest.json`: audit metadata for the run, including command,
+  git commit when available, config hash, completed generation, runtime,
+  population sizes, trials, and seed.
 - `experiment_report.html`: plain-language HTML report with the final
   generation's top 3 distinct strategy pairs.
 - `population_snapshots/`: full population JSON per generation.

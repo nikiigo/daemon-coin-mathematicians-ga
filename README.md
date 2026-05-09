@@ -48,9 +48,8 @@ machine over its own sequence and either chooses immediately when it reaches an
 accepting state or emits the target index from its final state. A `gene-table`
 strategy maps an observed bit prefix directly to a target index.
 
-The canonical triple-block strategy from `TRIPLE_BLOCK_STRATEGIES_SPEC.pdf` is
-represented with `block_size = 3`, skipped blocks `000` and `111`, and lookup
-offsets:
+The canonical triple-block strategy is represented with `block_size = 3`,
+skipped blocks `000` and `111`, and lookup offsets:
 
 ```text
 001 -> 0
@@ -107,9 +106,9 @@ fsm_fallback_index_max = 10
 ```
 
 `population_size_A` and `population_size_B` are maximum population sizes. If
-seed strategies are configured, generation 0 is exactly the expanded seed
-population, capped by those values. If no seeds are configured for a side, that
-side is randomly filled to its maximum.
+seed strategies are configured for a side, generation 0 is exactly the expanded
+seed population and validation rejects seed totals above that side's maximum. If
+no seeds are configured for a side, that side is randomly filled to its maximum.
 
 With 244 strategies per side and 10000 trials, each generation evaluates about
 595,360,000 A/B pair outcomes before duplicate-strategy optimization. Lower

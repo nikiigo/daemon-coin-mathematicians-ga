@@ -1770,9 +1770,11 @@ def strategy_plain_description(strategy: Strategy) -> str:
             f"Start in state {strategy.fsm_start_state}. For each bit, follow "
             "that state's transition for 0 or 1. If the machine reaches an "
             "accepting state, choose acceptance index plus that state's output "
-            f"plus index offset {strategy.fsm_index_offset}. If no accepting "
-            "state is configured, choose the target index stored as the final "
-            "state's output."
+            f"plus index offset {strategy.fsm_index_offset}. If accepting "
+            f"states are configured but none is reached, choose fallback index "
+            f"{strategy.fsm_fallback_index}. If no accepting state is "
+            "configured, choose the target index stored as the final state's "
+            "output."
         )
 
     return f"Unsupported strategy type: {strategy.strategy_type}"

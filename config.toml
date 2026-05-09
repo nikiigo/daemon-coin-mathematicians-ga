@@ -128,7 +128,7 @@ epsilon = 1e-12
 success_condition = "same-bit"
 
 # Strategy type used for randomly generated population slots. Supported values:
-# "first-pattern", "gene-table", and "block-lookup".
+# "first-pattern", "gene-table", "block-lookup", and "fsm".
 default_strategy_type = "first-pattern"
 
 # Directory where CSV, JSON, score matrices, and population snapshots are saved.
@@ -137,13 +137,14 @@ output_dir = "ga_output"
 # Set this to an integer for reproducible runs, or leave it omitted for random runs.
 # seed = 1
 
-# Seed strategies for generation 0. The GA uses these first and fills the rest of
-# each population randomly.
+# Seed strategies for generation 0. If a side has seed strategies, generation 0
+# is exactly the expanded seed population and is not randomly filled. If a side
+# has no seeds, it is randomly filled to the configured population size.
 #
 # Seed fields:
 # - id: human-readable strategy identifier used in reports and artifacts.
 # - population: number of generation-0 copies to create from this strategy.
-# - strategy_type: "first-pattern", "gene-table", or "block-lookup".
+# - strategy_type: "first-pattern", "gene-table", "block-lookup", or "fsm".
 # - observed_length: optional for first-pattern; 0 or omitted means unbounded.
 # - target_choice_range: gene-table only; exclusive upper bound for gene values.
 # - fallback_index: optional for first-pattern; used when pattern is absent.

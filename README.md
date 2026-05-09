@@ -22,7 +22,10 @@ evolves strategy populations over generations.
 
 ## Current Strategy Model
 
-The main strategy type is `first-pattern`.
+The GA currently seeds and evolves four strategy families: `first-pattern`,
+`block-lookup`, `fsm`, and `gene-table`. The current `config.toml` uses
+`first-pattern` only as the default family for random population slots when a
+side is not fully supplied by seed strategies.
 
 A `first-pattern` strategy:
 
@@ -38,12 +41,12 @@ second occurrence.
 `sequence_length`. A positive `observed_length` means the strategy only searches
 the first N bits.
 
-The code also supports `gene-table`, `block-lookup`, and `fsm` strategy types. A
-`block-lookup` strategy splits its own sequence into fixed-size blocks, skips
+A `block-lookup` strategy splits its own sequence into fixed-size blocks, skips
 configured block values, then uses the first non-skipped block as a lookup key
 for a local offset inside that block. An `fsm` strategy runs a finite-state
-machine over its own sequence and chooses the target index emitted by the final
-state.
+machine over its own sequence and either chooses immediately when it reaches an
+accepting state or emits the target index from its final state. A `gene-table`
+strategy maps an observed bit prefix directly to a target index.
 
 The canonical triple-block strategy from `TRIPLE_BLOCK_STRATEGIES_SPEC.pdf` is
 represented with `block_size = 3`, skipped blocks `000` and `111`, and lookup
@@ -81,6 +84,7 @@ trials_per_pair = 10000
 sequence_length = 1000
 generations = 20
 max_children_per_strategy = 4
+default_strategy_type = "first-pattern"
 
 disable_observed_length_mutation = true
 disable_fallback_index_mutation = true

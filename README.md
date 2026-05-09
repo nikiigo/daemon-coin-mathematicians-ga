@@ -48,6 +48,81 @@ machine over its own sequence and either chooses immediately when it reaches an
 accepting state or emits the target index from its final state. A `gene-table`
 strategy maps an observed bit prefix directly to a target index.
 
+A `block-lookup` strategy in plain language:
+
+1. Split your own sequence into same-size chunks.
+2. Read those chunks from left to right.
+3. Ignore any chunk listed in `skip_blocks`.
+4. Use the first chunk that was not skipped.
+5. Treat that chunk as a lookup-table key.
+6. Choose the index `block_start + lookup_offset`.
+7. If no usable chunk exists, use `fallback_policy`.
+
+For example, with `block_size = 3`:
+
+```text
+own sequence:  0 1 1  1 0 0  0 0 0  1 0 1 ...
+blocks:        011    100    000    101
+```
+
+Each 3-bit block is a lookup key:
+
+```text
+000, 001, 010, 011, 100, 101, 110, 111
+```
+
+If the first usable block starts at index `6` and the lookup table says offset
+`2`, the chosen target index is:
+
+```text
+6 + 2 = 8
+```
+
+The offset is local to the block. `skip_blocks = [0]` with `block_size = 3`
+means skip `000`. Fallback policies are:
+
+- `random-index`: choose a random valid index.
+- `first-index`: choose index `0`.
+- `last-index`: choose the last valid index.
+- `random-block`: choose a random position inside a complete block.
+- `none`: choose no index, so that trial fails.
+
+An `fsm` strategy in plain language:
+
+1. Start in `fsm_start_state`.
+2. Read your own sequence one bit at a time from left to right.
+3. For each bit, follow the current state's transition for `0` or `1`.
+4. If the new state is listed in `fsm_accepting_states`, choose immediately.
+5. The chosen index is `bit_index + fsm_outputs[state] + fsm_index_offset`,
+   clamped into the valid sequence bounds.
+6. If accepting states exist but none is reached, choose `fsm_fallback_index`.
+7. If no accepting states are configured, read all observed bits and choose the
+   final state's output as the target index.
+
+For example:
+
+```text
+fsm_start_state = 0
+fsm_outputs = [0, 0, 2]
+fsm_transitions = [[1, 0], [1, 2], [2, 2]]
+fsm_accepting_states = [2]
+fsm_index_offset = 0
+fsm_fallback_index = 0
+```
+
+This machine starts in state `0`. If it sees `0`, it moves to state `1`. If it
+then sees `1`, it moves to state `2`. Because state `2` is accepting, the
+strategy chooses immediately. With `fsm_outputs[2] = 2` and
+`fsm_index_offset = 0`, acceptance at bit index `1` chooses:
+
+```text
+1 + 2 + 0 = 3
+```
+
+In simple words, an FSM strategy is a small state machine that scans your own
+sequence looking for a situation it recognizes. When it recognizes one, it
+turns the recognition position into the target index.
+
 The canonical triple-block strategy is represented with `block_size = 3`,
 skipped blocks `000` and `111`, and lookup offsets:
 
@@ -244,8 +319,12 @@ After a GA run, re-check the top distinct final-generation pairs with fresh
 shared Monte Carlo trials:
 
 ```bash
-python compare_strategy_pairs.py ga_output_100_generations_200seed_occurrence1_2_10000_trials_childlimit4 --trials 100000 --seed 1
+python compare_strategy_pairs.py ga_output_200_generations_manifest_run --trials 100000 --sigma 3 --seed 1
 ```
+
+By default, the utility checks the latest saved generation, compares the top 3
+distinct pairs, and uses 100000 trials. Use `--generation`, `--top`, `--trials`,
+and `--sigma` to override those values.
 
 The utility writes:
 
@@ -265,17 +344,17 @@ when the full checked ranking is statistically separated, or when the trial
 budget is exhausted:
 
 ```bash
-python compare_strategy_pairs.py ga_output_100_generations_200seed_occurrence1_2_10000_trials_childlimit4 --sequential --max-trials 1000000 --batch-size 100000 --seed 1
+python compare_strategy_pairs.py ga_output_200_generations_manifest_run --sequential --max-trials 1000000 --batch-size 100000 --seed 1
 ```
 
 For a five-sigma certainty threshold, add `--sigma 5`:
 
 ```bash
-python compare_strategy_pairs.py ga_output_100_generations_200seed_occurrence1_2_10000_trials_childlimit4 --sequential --max-trials 5000000 --batch-size 100000 --sigma 5 --seed 1
+python compare_strategy_pairs.py ga_output_200_generations_manifest_run --sequential --max-trials 5000000 --batch-size 100000 --sigma 5 --seed 1
 ```
 
 See [RUN_EXAMPLE.md](RUN_EXAMPLE.md) for a complete recorded run, including
-100 GA generations and a 10,000,000-trial 5-sigma comparison.
+200 GA generations and a 100000-trial 3-sigma comparison.
 
 ## Notes
 

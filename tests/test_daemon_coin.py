@@ -204,6 +204,182 @@ class DaemonCoinGATests(unittest.TestCase):
 
         self.assertEqual(score, 1.0)
 
+    def test_block_lookup_strategy_uses_first_non_skipped_block(self):
+        strategy = make_strategy("A-block", "A", genes=[])
+        strategy.strategy_type = "block-lookup"
+        strategy.observed_length = 0
+        strategy.target_choice_range = 0
+        strategy.block_size = 3
+        strategy.skip_blocks = [0, 7]
+        strategy.lookup_offsets = [0, 0, 1, 0, 2, 2, 1, 0]
+        strategy.fallback_policy = "first-index"
+
+        self.assertEqual(choose_target_index(strategy, [0, 0, 0, 1, 0, 1]), 5)
+        self.assertEqual(choose_target_index(strategy, [1, 1, 1, 0, 1, 0]), 4)
+        self.assertEqual(choose_target_index(strategy, [0, 0, 1]), 0)
+
+    def test_block_lookup_strategy_fallback_policies(self):
+        strategy = make_strategy("A-block", "A", genes=[])
+        strategy.strategy_type = "block-lookup"
+        strategy.observed_length = 0
+        strategy.target_choice_range = 0
+        strategy.block_size = 3
+        strategy.skip_blocks = [0]
+        strategy.lookup_offsets = [0, 0, 1, 0, 2, 2, 1, 0]
+
+        strategy.fallback_policy = "last-index"
+        self.assertEqual(choose_target_index(strategy, [0, 0, 0]), 2)
+
+        strategy.fallback_policy = "none"
+        self.assertIsNone(choose_target_index(strategy, [0, 0, 0]))
+
+        strategy.fallback_policy = "random-block"
+        self.assertIn(
+            choose_target_index(strategy, [0, 0, 0], random.Random(1)),
+            {0, 1, 2},
+        )
+
+    def test_random_block_lookup_strategy_respects_config(self):
+        config = GAConfig(
+            default_strategy_type="block-lookup",
+            block_lookup_block_size_min=3,
+            block_lookup_block_size_max=3,
+            block_lookup_fallback_policy="random-index",
+        )
+
+        strategy = random_strategy("A", 1, 2, config, random.Random(1))
+
+        self.assertEqual(strategy.strategy_type, "block-lookup")
+        self.assertEqual(strategy.observed_length, 0)
+        self.assertEqual(strategy.target_choice_range, 0)
+        self.assertEqual(strategy.block_size, 3)
+        self.assertEqual(len(strategy.lookup_offsets), 8)
+        self.assertTrue(all(0 <= offset < 3 for offset in strategy.lookup_offsets))
+        self.assertTrue(all(0 <= block < 8 for block in strategy.skip_blocks))
+        self.assertEqual(strategy.fallback_policy, "random-index")
+
+    def test_block_lookup_seed_strategy_is_supported(self):
+        config = GAConfig(
+            population_size_A=2,
+            population_size_B=2,
+            elite_count=0,
+            default_strategy_type="block-lookup",
+            initial_population_A=[
+                {
+                    "id": "A-canonical-triple",
+                    "strategy_type": "block-lookup",
+                    "observed_length": 0,
+                    "block_size": 3,
+                    "skip_blocks": [0, 7],
+                    "lookup_offsets": [0, 0, 1, 0, 2, 2, 1, 0],
+                    "fallback_policy": "random-index",
+                }
+            ],
+        )
+        validate_config(config)
+
+        population = initial_population(
+            "A",
+            2,
+            config.initial_population_A,
+            config,
+            random.Random(1),
+        )
+
+        self.assertEqual(population[0].strategy_type, "block-lookup")
+        self.assertEqual(population[0].skip_blocks, [0, 7])
+        self.assertEqual(population[0].lookup_offsets, [0, 0, 1, 0, 2, 2, 1, 0])
+
+    def test_fsm_strategy_runs_transitions_and_chooses_state_output(self):
+        strategy = make_strategy("A-fsm", "A", genes=[])
+        strategy.strategy_type = "fsm"
+        strategy.observed_length = 0
+        strategy.target_choice_range = 0
+        strategy.fsm_state_count = 2
+        strategy.fsm_start_state = 0
+        strategy.fsm_outputs = [0, 1]
+        strategy.fsm_transitions = [[0, 1], [1, 0]]
+
+        self.assertEqual(choose_target_index(strategy, [1]), 1)
+        self.assertEqual(choose_target_index(strategy, [1, 1]), 0)
+        self.assertEqual(choose_target_index(strategy, [1, 0, 1]), 0)
+
+    def test_fsm_accepting_state_chooses_acceptance_index_with_offset(self):
+        strategy = make_strategy("A-fsm-accepting", "A", genes=[])
+        strategy.strategy_type = "fsm"
+        strategy.observed_length = 0
+        strategy.target_choice_range = 0
+        strategy.fsm_state_count = 3
+        strategy.fsm_start_state = 0
+        strategy.fsm_outputs = [0, 0, 2]
+        strategy.fsm_transitions = [[1, 0], [1, 2], [2, 2]]
+        strategy.fsm_accepting_states = [2]
+        strategy.fsm_index_offset = 1
+        strategy.fsm_fallback_index = 0
+
+        self.assertEqual(choose_target_index(strategy, [0, 1, 1, 0, 0]), 4)
+        self.assertEqual(choose_target_index(strategy, [1, 1, 1]), 0)
+
+    def test_random_fsm_strategy_respects_config(self):
+        config = GAConfig(
+            default_strategy_type="fsm",
+            fsm_state_count_min=3,
+            fsm_state_count_max=3,
+            fsm_output_index_min=1,
+            fsm_output_index_max=2,
+        )
+
+        strategy = random_strategy("A", 1, 2, config, random.Random(1))
+
+        self.assertEqual(strategy.strategy_type, "fsm")
+        self.assertEqual(strategy.fsm_state_count, 3)
+        self.assertTrue(0 <= strategy.fsm_start_state < 3)
+        self.assertEqual(len(strategy.fsm_outputs), 3)
+        self.assertTrue(all(1 <= output <= 2 for output in strategy.fsm_outputs))
+        self.assertEqual(len(strategy.fsm_transitions), 3)
+        self.assertTrue(
+            all(0 <= state < 3 for row in strategy.fsm_transitions for state in row)
+        )
+        self.assertTrue(
+            all(0 <= state < 3 for state in strategy.fsm_accepting_states)
+        )
+
+    def test_fsm_seed_strategy_is_supported(self):
+        config = GAConfig(
+            population_size_A=2,
+            population_size_B=2,
+            elite_count=0,
+            default_strategy_type="fsm",
+            initial_population_A=[
+                {
+                    "id": "A-fsm-parity",
+                    "strategy_type": "fsm",
+                    "observed_length": 0,
+                    "fsm_state_count": 2,
+                    "fsm_start_state": 0,
+                    "fsm_outputs": [0, 1],
+                    "fsm_transitions": [[0, 1], [1, 0]],
+                    "fsm_accepting_states": [1],
+                    "fsm_index_offset": 0,
+                    "fsm_fallback_index": 0,
+                }
+            ],
+        )
+        validate_config(config)
+
+        population = initial_population(
+            "A",
+            2,
+            config.initial_population_A,
+            config,
+            random.Random(1),
+        )
+
+        self.assertEqual(population[0].strategy_type, "fsm")
+        self.assertEqual(population[0].fsm_outputs, [0, 1])
+        self.assertEqual(population[0].fsm_transitions, [[0, 1], [1, 0]])
+        self.assertEqual(population[0].fsm_accepting_states, [1])
+
     def test_assign_survival_uses_best_partner_per_strategy(self):
         population_a = [
             make_strategy("A1", "A"),
@@ -388,6 +564,79 @@ class DaemonCoinGATests(unittest.TestCase):
         if child.observed_length != 0:
             self.assertLessEqual(len(child.pattern), child.observed_length)
 
+    def test_mutate_block_lookup_keeps_lookup_valid(self):
+        config = GAConfig(
+            default_strategy_type="block-lookup",
+            block_lookup_block_size_min=3,
+            block_lookup_block_size_max=4,
+            structure_mutation_probability=1.0,
+            gene_mutation_probability=1.0,
+        )
+        parent = make_strategy("A-block-parent", "A", genes=[])
+        parent.strategy_type = "block-lookup"
+        parent.observed_length = 0
+        parent.target_choice_range = 0
+        parent.block_size = 3
+        parent.skip_blocks = [0, 7]
+        parent.lookup_offsets = [0, 0, 1, 0, 2, 2, 1, 0]
+        parent.fallback_policy = "random-index"
+
+        child = mutate_strategy(parent, 2, 9, config, random.Random(2))
+
+        self.assertEqual(child.strategy_type, "block-lookup")
+        self.assertEqual(child.observed_length, 0)
+        self.assertEqual(child.target_choice_range, 0)
+        self.assertIn(child.block_size, [3, 4])
+        self.assertEqual(len(child.lookup_offsets), 2**child.block_size)
+        self.assertTrue(all(0 <= offset < child.block_size for offset in child.lookup_offsets))
+        self.assertTrue(all(0 <= block < 2**child.block_size for block in child.skip_blocks))
+        self.assertLess(len(child.skip_blocks), 2**child.block_size)
+        self.assertIn(child.fallback_policy, {
+            "random-index",
+            "first-index",
+            "last-index",
+            "random-block",
+            "none",
+        })
+
+    def test_mutate_fsm_keeps_machine_valid(self):
+        config = GAConfig(
+            default_strategy_type="fsm",
+            fsm_state_count_min=2,
+            fsm_state_count_max=4,
+            fsm_output_index_min=0,
+            fsm_output_index_max=3,
+            structure_mutation_probability=1.0,
+            gene_mutation_probability=1.0,
+        )
+        parent = make_strategy("A-fsm-parent", "A", genes=[])
+        parent.strategy_type = "fsm"
+        parent.observed_length = 0
+        parent.target_choice_range = 0
+        parent.fsm_state_count = 2
+        parent.fsm_start_state = 0
+        parent.fsm_outputs = [0, 1]
+        parent.fsm_transitions = [[0, 1], [1, 0]]
+
+        child = mutate_strategy(parent, 2, 10, config, random.Random(2))
+
+        self.assertEqual(child.strategy_type, "fsm")
+        self.assertIn(child.fsm_state_count, [2, 3])
+        self.assertTrue(0 <= child.fsm_start_state < child.fsm_state_count)
+        self.assertEqual(len(child.fsm_outputs), child.fsm_state_count)
+        self.assertEqual(len(child.fsm_transitions), child.fsm_state_count)
+        self.assertTrue(all(0 <= output <= 3 for output in child.fsm_outputs))
+        self.assertTrue(
+            all(
+                0 <= state < child.fsm_state_count
+                for row in child.fsm_transitions
+                for state in row
+            )
+        )
+        self.assertTrue(
+            all(0 <= state < child.fsm_state_count for state in child.fsm_accepting_states)
+        )
+
     def test_crossover_and_gene_join_require_compatible_structures(self):
         parent_1 = make_strategy("A1", "A", genes=[0, 0, 1, 1])
         parent_2 = make_strategy("A2", "A", genes=[1, 1, 2, 2])
@@ -411,6 +660,72 @@ class DaemonCoinGATests(unittest.TestCase):
         self.assertEqual(joined.creation_method, "gene-join")
         self.assertEqual(joined.parent_ids, ["A1", "A2"])
         self.assertEqual(len(joined.genes), 4)
+
+    def test_block_lookup_crossover_and_gene_join_combine_tables(self):
+        parent_1 = make_strategy("A-block-1", "A", genes=[])
+        parent_1.strategy_type = "block-lookup"
+        parent_1.observed_length = 0
+        parent_1.target_choice_range = 0
+        parent_1.block_size = 3
+        parent_1.skip_blocks = [0, 7]
+        parent_1.lookup_offsets = [0, 0, 1, 0, 2, 2, 1, 0]
+        parent_1.fallback_policy = "first-index"
+
+        parent_2 = make_strategy("A-block-2", "A", genes=[])
+        parent_2.strategy_type = "block-lookup"
+        parent_2.observed_length = 0
+        parent_2.target_choice_range = 0
+        parent_2.block_size = 3
+        parent_2.skip_blocks = [1, 6]
+        parent_2.lookup_offsets = [2, 2, 0, 2, 0, 0, 2, 2]
+        parent_2.fallback_policy = "last-index"
+
+        self.assertTrue(compatible(parent_1, parent_2))
+        crossed = crossover_strategy(parent_1, parent_2, 3, 3, random.Random(1))
+        joined = gene_join_strategy([parent_1, parent_2], 3, 4, random.Random(2))
+
+        self.assertEqual(crossed.strategy_type, "block-lookup")
+        self.assertEqual(joined.strategy_type, "block-lookup")
+        self.assertEqual(len(crossed.lookup_offsets), 8)
+        self.assertEqual(len(joined.lookup_offsets), 8)
+        self.assertTrue(all(0 <= offset < 3 for offset in crossed.lookup_offsets))
+        self.assertTrue(all(0 <= offset < 3 for offset in joined.lookup_offsets))
+
+    def test_fsm_crossover_and_gene_join_combine_machines(self):
+        parent_1 = make_strategy("A-fsm-1", "A", genes=[])
+        parent_1.strategy_type = "fsm"
+        parent_1.observed_length = 0
+        parent_1.target_choice_range = 0
+        parent_1.fsm_state_count = 2
+        parent_1.fsm_start_state = 0
+        parent_1.fsm_outputs = [0, 1]
+        parent_1.fsm_transitions = [[0, 1], [1, 0]]
+        parent_1.fsm_accepting_states = [1]
+
+        parent_2 = make_strategy("A-fsm-2", "A", genes=[])
+        parent_2.strategy_type = "fsm"
+        parent_2.observed_length = 0
+        parent_2.target_choice_range = 0
+        parent_2.fsm_state_count = 2
+        parent_2.fsm_start_state = 1
+        parent_2.fsm_outputs = [2, 3]
+        parent_2.fsm_transitions = [[1, 0], [0, 1]]
+        parent_2.fsm_accepting_states = [0]
+
+        self.assertTrue(compatible(parent_1, parent_2))
+        crossed = crossover_strategy(parent_1, parent_2, 3, 5, random.Random(1))
+        joined = gene_join_strategy([parent_1, parent_2], 3, 6, random.Random(2))
+
+        self.assertEqual(crossed.strategy_type, "fsm")
+        self.assertEqual(joined.strategy_type, "fsm")
+        self.assertEqual(crossed.fsm_state_count, 2)
+        self.assertEqual(joined.fsm_state_count, 2)
+        self.assertEqual(len(crossed.fsm_outputs), 2)
+        self.assertEqual(len(joined.fsm_outputs), 2)
+        self.assertEqual(len(crossed.fsm_transitions), 2)
+        self.assertEqual(len(joined.fsm_transitions), 2)
+        self.assertTrue(all(0 <= state < 2 for state in crossed.fsm_accepting_states))
+        self.assertTrue(all(0 <= state < 2 for state in joined.fsm_accepting_states))
 
     def test_reproduction_partners_are_weighted_by_survival_ratio(self):
         class RecordingRandom:

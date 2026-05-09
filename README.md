@@ -25,8 +25,25 @@ second occurrence.
 `sequence_length`. A positive `observed_length` means the strategy only searches
 the first N bits.
 
-The code also retains a `gene-table` strategy type for lookup-table experiments,
-but the default config uses `first-pattern`.
+The code also supports `gene-table`, `block-lookup`, and `fsm` strategy types. A
+`block-lookup` strategy splits its own sequence into fixed-size blocks, skips
+configured block values, then uses the first non-skipped block as a lookup key
+for a local offset inside that block. An `fsm` strategy runs a finite-state
+machine over its own sequence and chooses the target index emitted by the final
+state.
+
+The canonical triple-block strategy from `TRIPLE_BLOCK_STRATEGIES_SPEC.pdf` is
+represented with `block_size = 3`, skipped blocks `000` and `111`, and lookup
+offsets:
+
+```text
+001 -> 0
+010 -> 1
+011 -> 0
+100 -> 2
+101 -> 2
+110 -> 1
+```
 
 ## Configuration
 
@@ -45,8 +62,8 @@ python daemon_coin.py --config config.toml --generations 50 --trials-per-pair 10
 Current important defaults in `config.toml`:
 
 ```toml
-population_size_A = 200
-population_size_B = 200
+population_size_A = 244
+population_size_B = 244
 trials_per_pair = 10000
 sequence_length = 1000
 generations = 20
@@ -57,6 +74,19 @@ disable_fallback_index_mutation = true
 
 first_pattern_occurrence_min = 1
 first_pattern_occurrence_max = 2
+
+block_lookup_block_size_min = 1
+block_lookup_block_size_max = 4
+block_lookup_fallback_policy = "random-index"
+
+fsm_state_count_min = 2
+fsm_state_count_max = 6
+fsm_output_index_min = 0
+fsm_output_index_max = 10
+fsm_index_offset_min = -10
+fsm_index_offset_max = 10
+fsm_fallback_index_min = 0
+fsm_fallback_index_max = 10
 ```
 
 `population_size_A` and `population_size_B` are maximum population sizes. If
@@ -64,8 +94,8 @@ seed strategies are configured, generation 0 is exactly the expanded seed
 population, capped by those values. If no seeds are configured for a side, that
 side is randomly filled to its maximum.
 
-With 200 strategies per side and 10000 trials, each generation evaluates about
-400,000,000 A/B pair outcomes before duplicate-strategy optimization. Lower
+With 244 strategies per side and 10000 trials, each generation evaluates about
+595,360,000 A/B pair outcomes before duplicate-strategy optimization. Lower
 `trials_per_pair` for faster exploratory runs.
 
 ## Selection
@@ -111,17 +141,50 @@ pattern = [0, 1]
 Seed fields:
 
 - `population`: number of generation-0 copies to create from the seed.
+- `strategy_type`: `first-pattern`, `gene-table`, `block-lookup`, or `fsm`.
 - `observed_length`: `0` means unbounded; omit it to sample from `first_pattern_observed_length_min/max`.
 - `fallback_index`: used when the pattern is absent; omit it to sample from `first_pattern_fallback_index_min/max`.
 - `index_offset`: added to the requested occurrence index; omit it to sample from `first_pattern_index_offset_min/max`.
 - `occurrence_number`: which pattern occurrence to use; `1` first, `2` second. Omit it for seeded first-pattern strategies to use `1`.
 - `pattern`: list of bits to search for.
+- `block_size`: block width for a `block-lookup` strategy.
+- `skip_blocks`: integer block values to ignore. With `block_size = 3`, `0` is `000` and `7` is `111`.
+- `lookup_offsets`: one local offset per block value. Each value must be in `0..block_size-1`.
+- `fallback_policy`: `random-index`, `first-index`, `last-index`, `random-block`, or `none`.
+- `fsm_state_count`: number of finite-state-machine states.
+- `fsm_start_state`: state used before reading observed bits.
+- `fsm_outputs`: target index emitted by each state.
+- `fsm_transitions`: one `[next_on_0, next_on_1]` row per state.
+- `fsm_accepting_states`: states that immediately choose a target.
+- `fsm_index_offset`: added to acceptance index and state output.
+- `fsm_fallback_index`: used when no accepting state is reached.
 
-The current config has 60 seed blocks per player: 30 first-occurrence seeds and
-30 matching second-occurrence seeds. Their `population` values sum to exactly
-200 initial strategies per player, equal to the configured maximum. If that sum
-is lower than the maximum, the initial seeded population stays lower; it is not
-automatically filled with random strategies.
+Canonical triple-block seed example:
+
+```toml
+[[ga.initial_population_A]]
+id = "A-canonical-triple"
+population = 1
+strategy_type = "block-lookup"
+observed_length = 0
+block_size = 3
+skip_blocks = [0, 7]
+lookup_offsets = [0, 0, 1, 0, 2, 2, 1, 0]
+fallback_policy = "random-index"
+```
+
+You can also inject that seed from the CLI:
+
+```bash
+python daemon_coin.py --strategy-family block-lookup --block-size 3 --seed-known-triple-strategy --allow-asymmetric
+```
+
+The current config has 71 seed blocks per player: 7 FSM seeds, 4 block-lookup
+seeds, 30 first-occurrence seeds, and 30 matching second-occurrence seeds. Their
+`population` values sum to exactly 244 initial strategies per player, equal to
+the configured maximum. If that sum is lower than the maximum, the initial
+seeded population stays lower; it is not automatically filled with random
+strategies.
 
 ## Mutation Controls
 
@@ -171,11 +234,12 @@ The utility writes:
 - `top_pair_statistical_check.csv`
 - `top_pair_statistical_check.html`
 
-It reports each pair's checked score, a 95% confidence interval, and pairwise
-score-difference intervals against the other checked pairs. It also assigns a
-`certainty_group`: pairs in the same group are not statistically separated at
-the selected interval width, so the honest result may be a partial ranking
-rather than a forced 1/2/3 order.
+It reports each pair's checked score, standard error, confidence interval,
+z-scores against 50%, 66.67%, and 70% baselines, and pairwise score-difference
+intervals against the other checked pairs. It also assigns a `certainty_group`:
+pairs in the same group are not statistically separated at the selected
+interval width, so the honest result may be a partial ranking rather than a
+forced 1/2/3 order.
 
 For a more reliable check, run sequentially. This evaluates in batches and stops
 when the full checked ranking is statistically separated, or when the trial

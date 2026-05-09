@@ -16,6 +16,14 @@ logging.basicConfig(stream=sys.stdout, level=logging.INFO, format="%(message)s")
 
 PlayerType = str
 SuccessCondition = Callable[[int, int], bool]
+SUPPORTED_STRATEGY_TYPES = {"gene-table", "first-pattern", "block-lookup", "fsm"}
+BLOCK_LOOKUP_FALLBACK_POLICIES = {
+    "random-index",
+    "first-index",
+    "last-index",
+    "random-block",
+    "none",
+}
 
 
 @dataclass
@@ -34,6 +42,17 @@ class GAConfig:
     first_pattern_index_offset_max: int = 10
     first_pattern_occurrence_min: int = 1
     first_pattern_occurrence_max: int = 2
+    block_lookup_block_size_min: int = 3
+    block_lookup_block_size_max: int = 3
+    block_lookup_fallback_policy: str = "random-index"
+    fsm_state_count_min: int = 2
+    fsm_state_count_max: int = 6
+    fsm_output_index_min: int = 0
+    fsm_output_index_max: int = 10
+    fsm_index_offset_min: int = -10
+    fsm_index_offset_max: int = 10
+    fsm_fallback_index_min: int = 0
+    fsm_fallback_index_max: int = 10
     trials_per_pair: int = 500
     sequence_length: int = 1000
     generations: int = 20
@@ -74,6 +93,17 @@ class Strategy:
     fallback_index: int = 1
     index_offset: int = 0
     occurrence_number: int = 1
+    block_size: int = 0
+    skip_blocks: list[int] = field(default_factory=list)
+    lookup_offsets: list[int] = field(default_factory=list)
+    fallback_policy: str = "random-index"
+    fsm_state_count: int = 0
+    fsm_start_state: int = 0
+    fsm_outputs: list[int] = field(default_factory=list)
+    fsm_transitions: list[list[int]] = field(default_factory=list)
+    fsm_accepting_states: list[int] = field(default_factory=list)
+    fsm_index_offset: int = 0
+    fsm_fallback_index: int = 0
     survival_ratio: float = 0.0
     best_partner_id: str | None = None
     best_score: float = 0.0
@@ -108,6 +138,34 @@ def prefix_to_index(bits: list[int]) -> int:
     for bit in bits:
         value = (value << 1) | bit
     return value
+
+
+def block_text(block_value: int, block_size: int) -> str:
+    return format(block_value, f"0{block_size}b")
+
+
+def normalize_fallback_policy(policy: str) -> str:
+    normalized = policy.lower().replace("_", "-")
+    if normalized not in BLOCK_LOOKUP_FALLBACK_POLICIES:
+        raise ValueError(f"Unsupported block lookup fallback policy: {policy}")
+    return normalized
+
+
+def canonical_triple_lookup_offsets() -> list[int]:
+    return [0, 0, 1, 0, 2, 2, 1, 0]
+
+
+def canonical_triple_seed(player_type: PlayerType) -> dict:
+    return {
+        "id": f"{player_type}-canonical-triple",
+        "strategy_type": "block-lookup",
+        "population": 1,
+        "observed_length": 0,
+        "block_size": 3,
+        "skip_blocks": [0, 7],
+        "lookup_offsets": canonical_triple_lookup_offsets(),
+        "fallback_policy": "random-index",
+    }
 
 
 def new_strategy_id(player_type: PlayerType, generation: int, counter: int) -> str:
@@ -165,6 +223,55 @@ def random_first_pattern_occurrence_number(config: GAConfig, rng: random.Random)
     )
 
 
+def random_block_lookup_block_size(config: GAConfig, rng: random.Random) -> int:
+    return rng.randint(
+        config.block_lookup_block_size_min,
+        config.block_lookup_block_size_max,
+    )
+
+
+def random_block_lookup_skip_blocks(block_size: int, rng: random.Random) -> list[int]:
+    block_count = 2**block_size
+    skip_blocks = [
+        block_value
+        for block_value in range(block_count)
+        if rng.random() < 0.25
+    ]
+    if len(skip_blocks) == block_count:
+        skip_blocks.pop(rng.randrange(block_count))
+    return skip_blocks
+
+
+def random_block_lookup_offsets(block_size: int, rng: random.Random) -> list[int]:
+    return [rng.randrange(block_size) for _block in range(2**block_size)]
+
+
+def random_block_lookup_fallback_policy(config: GAConfig, rng: random.Random) -> str:
+    return normalize_fallback_policy(config.block_lookup_fallback_policy)
+
+
+def random_fsm_state_count(config: GAConfig, rng: random.Random) -> int:
+    return rng.randint(config.fsm_state_count_min, config.fsm_state_count_max)
+
+
+def random_fsm_outputs(
+    state_count: int,
+    config: GAConfig,
+    rng: random.Random,
+) -> list[int]:
+    return [
+        rng.randint(config.fsm_output_index_min, config.fsm_output_index_max)
+        for _state in range(state_count)
+    ]
+
+
+def random_fsm_transitions(state_count: int, rng: random.Random) -> list[list[int]]:
+    return [
+        [rng.randrange(state_count), rng.randrange(state_count)]
+        for _state in range(state_count)
+    ]
+
+
 def random_strategy(
     player_type: PlayerType,
     generation: int,
@@ -177,6 +284,17 @@ def random_strategy(
     fallback_index = 0
     index_offset = 0
     occurrence_number = 1
+    block_size = 0
+    skip_blocks = []
+    lookup_offsets = []
+    fallback_policy = "random-index"
+    fsm_state_count = 0
+    fsm_start_state = 0
+    fsm_outputs = []
+    fsm_transitions = []
+    fsm_accepting_states = []
+    fsm_index_offset = 0
+    fsm_fallback_index = 0
 
     if config.default_strategy_type == "gene-table":
         observed_length = rng.randint(
@@ -203,6 +321,33 @@ def random_strategy(
         fallback_index = random_first_pattern_fallback_index(config, rng)
         index_offset = random_first_pattern_index_offset(config, rng)
         occurrence_number = random_first_pattern_occurrence_number(config, rng)
+    elif config.default_strategy_type == "block-lookup":
+        observed_length = 0
+        target_choice_range = 0
+        block_size = random_block_lookup_block_size(config, rng)
+        skip_blocks = random_block_lookup_skip_blocks(block_size, rng)
+        lookup_offsets = random_block_lookup_offsets(block_size, rng)
+        fallback_policy = random_block_lookup_fallback_policy(config, rng)
+    elif config.default_strategy_type == "fsm":
+        observed_length = 0
+        target_choice_range = 0
+        fsm_state_count = random_fsm_state_count(config, rng)
+        fsm_start_state = rng.randrange(fsm_state_count)
+        fsm_outputs = random_fsm_outputs(fsm_state_count, config, rng)
+        fsm_transitions = random_fsm_transitions(fsm_state_count, rng)
+        fsm_accepting_states = [
+            state
+            for state in range(fsm_state_count)
+            if rng.random() < 0.25
+        ]
+        fsm_index_offset = rng.randint(
+            config.fsm_index_offset_min,
+            config.fsm_index_offset_max,
+        )
+        fsm_fallback_index = rng.randint(
+            config.fsm_fallback_index_min,
+            config.fsm_fallback_index_max,
+        )
     else:
         raise ValueError(f"Unsupported strategy type: {config.default_strategy_type}")
 
@@ -220,6 +365,17 @@ def random_strategy(
         fallback_index=fallback_index,
         index_offset=index_offset,
         occurrence_number=occurrence_number,
+        block_size=block_size,
+        skip_blocks=skip_blocks,
+        lookup_offsets=lookup_offsets,
+        fallback_policy=fallback_policy,
+        fsm_state_count=fsm_state_count,
+        fsm_start_state=fsm_start_state,
+        fsm_outputs=fsm_outputs,
+        fsm_transitions=fsm_transitions,
+        fsm_accepting_states=fsm_accepting_states,
+        fsm_index_offset=fsm_index_offset,
+        fsm_fallback_index=fsm_fallback_index,
     )
 
 
@@ -249,7 +405,12 @@ def strategy_from_seed(
     )
     strategy_type = seed_config.get("strategy_type")
     if strategy_type is None:
-        strategy_type = "first-pattern" if "pattern" in seed_config else "gene-table"
+        if "fsm_outputs" in seed_config or "fsm_transitions" in seed_config:
+            strategy_type = "fsm"
+        elif "block_size" in seed_config or "lookup_offsets" in seed_config:
+            strategy_type = "block-lookup"
+        else:
+            strategy_type = "first-pattern" if "pattern" in seed_config else "gene-table"
     pattern = list(seed_config.get("pattern", []))
     if strategy_type == "first-pattern":
         observed_length = seed_config.get("observed_length")
@@ -259,8 +420,15 @@ def strategy_from_seed(
                 config,
                 rng,
             )
+    elif strategy_type == "block-lookup":
+        observed_length = seed_config.get("observed_length", 0)
+    elif strategy_type == "fsm":
+        observed_length = seed_config.get("observed_length", 0)
     else:
         observed_length = seed_config["observed_length"]
+
+    block_size = seed_config.get("block_size", 0)
+    fsm_state_count = seed_config.get("fsm_state_count", len(seed_config.get("fsm_outputs", [])))
 
     return Strategy(
         id=strategy_id,
@@ -268,7 +436,7 @@ def strategy_from_seed(
         observed_length=observed_length,
         target_choice_range=(
             0
-            if strategy_type == "first-pattern"
+            if strategy_type in {"first-pattern", "block-lookup", "fsm"}
             else seed_config["target_choice_range"]
         ),
         genes=list(seed_config.get("genes", [])),
@@ -296,6 +464,24 @@ def strategy_from_seed(
             if strategy_type == "first-pattern"
             else 1
         ),
+        block_size=block_size,
+        skip_blocks=list(seed_config.get("skip_blocks", [])),
+        lookup_offsets=list(seed_config.get("lookup_offsets", [])),
+        fallback_policy=normalize_fallback_policy(
+            seed_config.get("fallback_policy", config.block_lookup_fallback_policy)
+        )
+        if strategy_type == "block-lookup"
+        else "random-index",
+        fsm_state_count=fsm_state_count,
+        fsm_start_state=seed_config.get("fsm_start_state", 0),
+        fsm_outputs=list(seed_config.get("fsm_outputs", [])),
+        fsm_transitions=[
+            list(transition)
+            for transition in seed_config.get("fsm_transitions", [])
+        ],
+        fsm_accepting_states=list(seed_config.get("fsm_accepting_states", [])),
+        fsm_index_offset=seed_config.get("fsm_index_offset", 0),
+        fsm_fallback_index=seed_config.get("fsm_fallback_index", 0),
     )
 
 
@@ -368,6 +554,17 @@ def strategy_signature(strategy: Strategy) -> tuple:
         strategy.fallback_index,
         strategy.index_offset,
         strategy.occurrence_number,
+        strategy.block_size,
+        tuple(strategy.skip_blocks),
+        tuple(strategy.lookup_offsets),
+        strategy.fallback_policy,
+        strategy.fsm_state_count,
+        strategy.fsm_start_state,
+        tuple(strategy.fsm_outputs),
+        tuple(tuple(transition) for transition in strategy.fsm_transitions),
+        tuple(strategy.fsm_accepting_states),
+        strategy.fsm_index_offset,
+        strategy.fsm_fallback_index,
     )
 
 
@@ -388,7 +585,36 @@ def unique_strategy_groups(population: list[Strategy]) -> tuple[list[Strategy], 
     return unique_strategies, population_to_unique
 
 
-def choose_target_index(strategy: Strategy, observed_bits: list[int]) -> int:
+def choose_block_lookup_fallback(
+    strategy: Strategy,
+    observed_bits: list[int],
+    rng: random.Random | None,
+) -> int | None:
+    if not observed_bits:
+        return None
+
+    policy = normalize_fallback_policy(strategy.fallback_policy)
+    if policy == "first-index":
+        return 0
+    if policy == "last-index":
+        return len(observed_bits) - 1
+    if policy == "none":
+        return None
+
+    fallback_rng = rng or random.Random(prefix_to_index(observed_bits[:16]))
+    if policy == "random-block":
+        complete_blocks = len(observed_bits) // strategy.block_size
+        if complete_blocks > 0:
+            block_start = fallback_rng.randrange(complete_blocks) * strategy.block_size
+            return block_start + fallback_rng.randrange(strategy.block_size)
+    return fallback_rng.randrange(len(observed_bits))
+
+
+def choose_target_index(
+    strategy: Strategy,
+    observed_bits: list[int],
+    rng: random.Random | None = None,
+) -> int | None:
     if strategy.strategy_type == "gene-table":
         return strategy.genes[prefix_to_index(observed_bits)]
 
@@ -401,6 +627,33 @@ def choose_target_index(strategy: Strategy, observed_bits: list[int]) -> int:
         if match_index is None:
             return strategy.fallback_index
         return clamp(match_index + strategy.index_offset, 0, len(observed_bits) - 1)
+
+    if strategy.strategy_type == "block-lookup":
+        skip_blocks = set(strategy.skip_blocks)
+        block_size = strategy.block_size
+        for block_start in range(0, len(observed_bits) - block_size + 1, block_size):
+            block_bits = observed_bits[block_start : block_start + block_size]
+            block_value = prefix_to_index(block_bits)
+            if block_value in skip_blocks:
+                continue
+            local_offset = strategy.lookup_offsets[block_value] % block_size
+            return block_start + local_offset
+        return choose_block_lookup_fallback(strategy, observed_bits, rng)
+
+    if strategy.strategy_type == "fsm":
+        state = strategy.fsm_start_state
+        accepting_states = set(strategy.fsm_accepting_states)
+        for bit_index, bit in enumerate(observed_bits):
+            state = strategy.fsm_transitions[state][bit]
+            if state in accepting_states:
+                return clamp(
+                    bit_index + strategy.fsm_outputs[state] + strategy.fsm_index_offset,
+                    0,
+                    len(observed_bits) - 1,
+                )
+        if accepting_states:
+            return strategy.fsm_fallback_index
+        return strategy.fsm_outputs[state]
 
     raise ValueError(f"Unsupported strategy type: {strategy.strategy_type}")
 
@@ -421,6 +674,12 @@ def evaluate_pair(
         strategy_b.target_choice_range,
         strategy_a.fallback_index + 1,
         strategy_b.fallback_index + 1,
+        strategy_a.block_size,
+        strategy_b.block_size,
+        max(strategy_a.fsm_outputs, default=0) + 1,
+        max(strategy_b.fsm_outputs, default=0) + 1,
+        strategy_a.fsm_fallback_index + 1,
+        strategy_b.fsm_fallback_index + 1,
     )
     wins = 0
 
@@ -438,10 +697,14 @@ def evaluate_pair(
             if strategy_b.observed_length == 0
             else sequence_b[: strategy_b.observed_length]
         )
-        target_in_b = choose_target_index(strategy_a, observed_a)
-        target_in_a = choose_target_index(strategy_b, observed_b)
+        target_in_b = choose_target_index(strategy_a, observed_a, rng)
+        target_in_a = choose_target_index(strategy_b, observed_b, rng)
 
-        if success_condition(sequence_a[target_in_a], sequence_b[target_in_b]):
+        if (
+            target_in_a is not None
+            and target_in_b is not None
+            and success_condition(sequence_a[target_in_a], sequence_b[target_in_b])
+        ):
             wins += 1
 
     return wins / trials
@@ -464,6 +727,12 @@ def evaluate_populations(
         *(strategy.observed_length for strategy in unique_b),
         *(strategy.target_choice_range for strategy in unique_a),
         *(strategy.target_choice_range for strategy in unique_b),
+        *(strategy.block_size for strategy in unique_a),
+        *(strategy.block_size for strategy in unique_b),
+        *(max(strategy.fsm_outputs, default=0) + 1 for strategy in unique_a),
+        *(max(strategy.fsm_outputs, default=0) + 1 for strategy in unique_b),
+        *(strategy.fsm_fallback_index + 1 for strategy in unique_a),
+        *(strategy.fsm_fallback_index + 1 for strategy in unique_b),
     )
     wins = [
         [0 for _strategy_b in unique_b]
@@ -479,6 +748,7 @@ def evaluate_populations(
                 sequence_a
                 if strategy.observed_length == 0
                 else sequence_a[: strategy.observed_length],
+                rng,
             )
             for strategy in unique_a
         ]
@@ -488,14 +758,20 @@ def evaluate_populations(
                 sequence_b
                 if strategy.observed_length == 0
                 else sequence_b[: strategy.observed_length],
+                rng,
             )
             for strategy in unique_b
         ]
 
         for row_index, target_in_b in enumerate(targets_in_b):
+            if target_in_b is None:
+                continue
             b_value = sequence_b[target_in_b]
             for column_index, target_in_a in enumerate(targets_in_a):
-                if success_condition(sequence_a[target_in_a], b_value):
+                if target_in_a is not None and success_condition(
+                    sequence_a[target_in_a],
+                    b_value,
+                ):
                     wins[row_index][column_index] += 1
 
     unique_score_matrix = [
@@ -591,6 +867,63 @@ def resize_genes(
     return [gene % target_choice_range for gene in resized]
 
 
+def resize_lookup_offsets(
+    lookup_offsets: list[int],
+    old_block_size: int,
+    new_block_size: int,
+    rng: random.Random,
+) -> list[int]:
+    new_count = 2**new_block_size
+    if new_block_size == old_block_size:
+        resized = list(lookup_offsets)
+    elif new_block_size < old_block_size:
+        resized = lookup_offsets[:new_count]
+    else:
+        resized = list(lookup_offsets)
+        resized.extend(
+            rng.randrange(new_block_size)
+            for _index in range(new_count - len(lookup_offsets))
+        )
+    return [offset % new_block_size for offset in resized[:new_count]]
+
+
+def normalize_skip_blocks(skip_blocks: list[int], block_size: int) -> list[int]:
+    block_count = 2**block_size
+    normalized = sorted({block for block in skip_blocks if 0 <= block < block_count})
+    if len(normalized) == block_count:
+        normalized.pop()
+    return normalized
+
+
+def resize_fsm(
+    outputs: list[int],
+    transitions: list[list[int]],
+    old_state_count: int,
+    new_state_count: int,
+    config: GAConfig,
+    rng: random.Random,
+) -> tuple[list[int], list[list[int]]]:
+    resized_outputs = list(outputs[:new_state_count])
+    while len(resized_outputs) < new_state_count:
+        resized_outputs.append(
+            rng.randint(config.fsm_output_index_min, config.fsm_output_index_max)
+        )
+
+    resized_transitions = [list(transition[:2]) for transition in transitions[:new_state_count]]
+    while len(resized_transitions) < new_state_count:
+        resized_transitions.append(
+            [rng.randrange(new_state_count), rng.randrange(new_state_count)]
+        )
+    resized_transitions = [
+        [
+            transition[0] % new_state_count,
+            transition[1] % new_state_count,
+        ]
+        for transition in resized_transitions
+    ]
+    return resized_outputs, resized_transitions
+
+
 def mutate_strategy(
     parent: Strategy,
     generation: int,
@@ -627,9 +960,37 @@ def mutate_strategy(
     fallback_index = 0
     index_offset = 0
     occurrence_number = parent.occurrence_number
+    block_size = parent.block_size
+    skip_blocks = list(parent.skip_blocks)
+    lookup_offsets = list(parent.lookup_offsets)
+    fallback_policy = parent.fallback_policy
+    fsm_state_count = parent.fsm_state_count
+    fsm_start_state = parent.fsm_start_state
+    fsm_outputs = list(parent.fsm_outputs)
+    fsm_transitions = [list(transition) for transition in parent.fsm_transitions]
+    fsm_accepting_states = list(parent.fsm_accepting_states)
+    fsm_index_offset = parent.fsm_index_offset
+    fsm_fallback_index = parent.fsm_fallback_index
 
     if parent.strategy_type == "gene-table":
         occurrence_number = 1
+        block_size = 0
+        skip_blocks = []
+        lookup_offsets = []
+        fallback_policy = "random-index"
+        fsm_state_count = 0
+        fsm_start_state = 0
+        fsm_outputs = []
+        fsm_transitions = []
+        fsm_accepting_states = []
+        fsm_index_offset = 0
+        fsm_fallback_index = 0
+        fsm_accepting_states = []
+        fsm_index_offset = 0
+        fsm_fallback_index = 0
+        fsm_accepting_states = []
+        fsm_index_offset = 0
+        fsm_fallback_index = 0
         genes = resize_genes(
             parent.genes,
             parent.observed_length,
@@ -642,6 +1003,23 @@ def mutate_strategy(
                 genes[index] = rng.randrange(target_choice_range)
     elif parent.strategy_type == "first-pattern":
         target_choice_range = 0
+        block_size = 0
+        skip_blocks = []
+        lookup_offsets = []
+        fallback_policy = "random-index"
+        fsm_state_count = 0
+        fsm_start_state = 0
+        fsm_outputs = []
+        fsm_transitions = []
+        fsm_accepting_states = []
+        fsm_index_offset = 0
+        fsm_fallback_index = 0
+        fsm_accepting_states = []
+        fsm_index_offset = 0
+        fsm_fallback_index = 0
+        fsm_accepting_states = []
+        fsm_index_offset = 0
+        fsm_fallback_index = 0
         if (
             not config.disable_observed_length_mutation
             and rng.random() < config.structure_mutation_probability
@@ -708,6 +1086,127 @@ def mutate_strategy(
         for index in range(len(pattern)):
             if rng.random() < config.gene_mutation_probability:
                 pattern[index] = 1 - pattern[index]
+    elif parent.strategy_type == "block-lookup":
+        observed_length = 0
+        target_choice_range = 0
+        fallback_index = 0
+        index_offset = 0
+        occurrence_number = 1
+        genes = []
+        pattern = []
+
+        if (
+            config.block_lookup_block_size_min < config.block_lookup_block_size_max
+            and rng.random() < config.structure_mutation_probability
+        ):
+            block_size = clamp(
+                block_size + rng.choice([-1, 1]),
+                config.block_lookup_block_size_min,
+                config.block_lookup_block_size_max,
+            )
+        lookup_offsets = resize_lookup_offsets(
+            parent.lookup_offsets,
+            parent.block_size,
+            block_size,
+            rng,
+        )
+        skip_blocks = normalize_skip_blocks(parent.skip_blocks, block_size)
+
+        if rng.random() < config.structure_mutation_probability:
+            block_to_toggle = rng.randrange(2**block_size)
+            if block_to_toggle in skip_blocks:
+                skip_blocks.remove(block_to_toggle)
+            else:
+                skip_blocks.append(block_to_toggle)
+            skip_blocks = normalize_skip_blocks(skip_blocks, block_size)
+
+        for index in range(len(lookup_offsets)):
+            if rng.random() < config.gene_mutation_probability:
+                lookup_offsets[index] = rng.randrange(block_size)
+
+        if rng.random() < config.structure_mutation_probability:
+            fallback_policy = rng.choice(sorted(BLOCK_LOOKUP_FALLBACK_POLICIES))
+        fsm_state_count = 0
+        fsm_start_state = 0
+        fsm_outputs = []
+        fsm_transitions = []
+        fsm_accepting_states = []
+        fsm_index_offset = 0
+        fsm_fallback_index = 0
+        fsm_accepting_states = []
+        fsm_index_offset = 0
+        fsm_fallback_index = 0
+        fsm_accepting_states = []
+        fsm_index_offset = 0
+        fsm_fallback_index = 0
+    elif parent.strategy_type == "fsm":
+        observed_length = 0
+        target_choice_range = 0
+        fallback_index = 0
+        index_offset = 0
+        occurrence_number = 1
+        genes = []
+        pattern = []
+        block_size = 0
+        skip_blocks = []
+        lookup_offsets = []
+        fallback_policy = "random-index"
+
+        if (
+            config.fsm_state_count_min < config.fsm_state_count_max
+            and rng.random() < config.structure_mutation_probability
+        ):
+            fsm_state_count = clamp(
+                fsm_state_count + rng.choice([-1, 1]),
+                config.fsm_state_count_min,
+                config.fsm_state_count_max,
+            )
+        fsm_outputs, fsm_transitions = resize_fsm(
+            parent.fsm_outputs,
+            parent.fsm_transitions,
+            parent.fsm_state_count,
+            fsm_state_count,
+            config,
+            rng,
+        )
+        fsm_start_state %= fsm_state_count
+        fsm_accepting_states = [
+            state for state in fsm_accepting_states if state < fsm_state_count
+        ]
+
+        if rng.random() < config.structure_mutation_probability:
+            fsm_start_state = rng.randrange(fsm_state_count)
+        if rng.random() < config.structure_mutation_probability:
+            state = rng.randrange(fsm_state_count)
+            if state in fsm_accepting_states:
+                fsm_accepting_states.remove(state)
+            else:
+                fsm_accepting_states.append(state)
+            fsm_accepting_states = sorted(set(fsm_accepting_states))
+        if rng.random() < config.structure_mutation_probability:
+            fsm_index_offset = clamp(
+                fsm_index_offset + rng.choice([-1, 1]),
+                config.fsm_index_offset_min,
+                config.fsm_index_offset_max,
+            )
+        if rng.random() < config.structure_mutation_probability:
+            fsm_fallback_index = clamp(
+                fsm_fallback_index + rng.choice([-1, 1]),
+                config.fsm_fallback_index_min,
+                config.fsm_fallback_index_max,
+            )
+
+        for index in range(len(fsm_outputs)):
+            if rng.random() < config.gene_mutation_probability:
+                fsm_outputs[index] = rng.randint(
+                    config.fsm_output_index_min,
+                    config.fsm_output_index_max,
+                )
+
+        for state in range(fsm_state_count):
+            for bit in range(2):
+                if rng.random() < config.gene_mutation_probability:
+                    fsm_transitions[state][bit] = rng.randrange(fsm_state_count)
     else:
         raise ValueError(f"Unsupported strategy type: {parent.strategy_type}")
 
@@ -725,6 +1224,17 @@ def mutate_strategy(
         fallback_index=fallback_index,
         index_offset=index_offset,
         occurrence_number=occurrence_number,
+        block_size=block_size,
+        skip_blocks=skip_blocks,
+        lookup_offsets=lookup_offsets,
+        fallback_policy=fallback_policy,
+        fsm_state_count=fsm_state_count,
+        fsm_start_state=fsm_start_state,
+        fsm_outputs=fsm_outputs,
+        fsm_transitions=fsm_transitions,
+        fsm_accepting_states=fsm_accepting_states,
+        fsm_index_offset=fsm_index_offset,
+        fsm_fallback_index=fsm_fallback_index,
     )
 
 
@@ -736,6 +1246,11 @@ def compatible(parent_1: Strategy, parent_2: Strategy) -> bool:
         and parent_1.target_choice_range == parent_2.target_choice_range
         and len(parent_1.genes) == len(parent_2.genes)
         and len(parent_1.pattern) == len(parent_2.pattern)
+        and parent_1.block_size == parent_2.block_size
+        and len(parent_1.lookup_offsets) == len(parent_2.lookup_offsets)
+        and parent_1.fsm_state_count == parent_2.fsm_state_count
+        and len(parent_1.fsm_outputs) == len(parent_2.fsm_outputs)
+        and len(parent_1.fsm_transitions) == len(parent_2.fsm_transitions)
     )
 
 
@@ -755,6 +1270,17 @@ def crossover_strategy(
         fallback_index = 0
         index_offset = 0
         occurrence_number = 1
+        block_size = 0
+        skip_blocks = []
+        lookup_offsets = []
+        fallback_policy = "random-index"
+        fsm_state_count = 0
+        fsm_start_state = 0
+        fsm_outputs = []
+        fsm_transitions = []
+        fsm_accepting_states = []
+        fsm_index_offset = 0
+        fsm_fallback_index = 0
     elif parent_1.strategy_type == "first-pattern":
         genes = []
         pattern = [
@@ -766,6 +1292,88 @@ def crossover_strategy(
         occurrence_number = rng.choice(
             [parent_1.occurrence_number, parent_2.occurrence_number]
         )
+        block_size = 0
+        skip_blocks = []
+        lookup_offsets = []
+        fallback_policy = "random-index"
+        fsm_state_count = 0
+        fsm_start_state = 0
+        fsm_outputs = []
+        fsm_transitions = []
+        fsm_accepting_states = []
+        fsm_index_offset = 0
+        fsm_fallback_index = 0
+    elif parent_1.strategy_type == "block-lookup":
+        genes = []
+        pattern = []
+        fallback_index = 0
+        index_offset = 0
+        occurrence_number = 1
+        block_size = parent_1.block_size
+        parent_1_skip = set(parent_1.skip_blocks)
+        parent_2_skip = set(parent_2.skip_blocks)
+        skip_blocks = [
+            block
+            for block in range(2**block_size)
+            if (
+                block in parent_1_skip
+                if rng.random() < 0.5
+                else block in parent_2_skip
+            )
+        ]
+        skip_blocks = normalize_skip_blocks(skip_blocks, block_size)
+        lookup_offsets = [
+            offset_1 if rng.random() < 0.5 else offset_2
+            for offset_1, offset_2 in zip(
+                parent_1.lookup_offsets,
+                parent_2.lookup_offsets,
+            )
+        ]
+        fallback_policy = rng.choice([parent_1.fallback_policy, parent_2.fallback_policy])
+        fsm_state_count = 0
+        fsm_start_state = 0
+        fsm_outputs = []
+        fsm_transitions = []
+        fsm_accepting_states = []
+        fsm_index_offset = 0
+        fsm_fallback_index = 0
+    elif parent_1.strategy_type == "fsm":
+        genes = []
+        pattern = []
+        fallback_index = 0
+        index_offset = 0
+        occurrence_number = 1
+        block_size = 0
+        skip_blocks = []
+        lookup_offsets = []
+        fallback_policy = "random-index"
+        fsm_state_count = parent_1.fsm_state_count
+        fsm_start_state = rng.choice([parent_1.fsm_start_state, parent_2.fsm_start_state])
+        fsm_outputs = [
+            output_1 if rng.random() < 0.5 else output_2
+            for output_1, output_2 in zip(parent_1.fsm_outputs, parent_2.fsm_outputs)
+        ]
+        fsm_transitions = [
+            [
+                transition_1[bit] if rng.random() < 0.5 else transition_2[bit]
+                for bit in range(2)
+            ]
+            for transition_1, transition_2 in zip(
+                parent_1.fsm_transitions,
+                parent_2.fsm_transitions,
+            )
+        ]
+        fsm_accepting_states = [
+            state
+            for state in range(fsm_state_count)
+            if (
+                state in parent_1.fsm_accepting_states
+                if rng.random() < 0.5
+                else state in parent_2.fsm_accepting_states
+            )
+        ]
+        fsm_index_offset = rng.choice([parent_1.fsm_index_offset, parent_2.fsm_index_offset])
+        fsm_fallback_index = rng.choice([parent_1.fsm_fallback_index, parent_2.fsm_fallback_index])
     else:
         raise ValueError(f"Unsupported strategy type: {parent_1.strategy_type}")
 
@@ -783,6 +1391,17 @@ def crossover_strategy(
         fallback_index=fallback_index,
         index_offset=index_offset,
         occurrence_number=occurrence_number,
+        block_size=block_size,
+        skip_blocks=skip_blocks,
+        lookup_offsets=lookup_offsets,
+        fallback_policy=fallback_policy,
+        fsm_state_count=fsm_state_count,
+        fsm_start_state=fsm_start_state,
+        fsm_outputs=fsm_outputs,
+        fsm_transitions=fsm_transitions,
+        fsm_accepting_states=fsm_accepting_states,
+        fsm_index_offset=fsm_index_offset,
+        fsm_fallback_index=fsm_fallback_index,
     )
 
 
@@ -799,6 +1418,17 @@ def gene_join_strategy(
         fallback_index = 0
         index_offset = 0
         occurrence_number = 1
+        block_size = 0
+        skip_blocks = []
+        lookup_offsets = []
+        fallback_policy = "random-index"
+        fsm_state_count = 0
+        fsm_start_state = 0
+        fsm_outputs = []
+        fsm_transitions = []
+        fsm_accepting_states = []
+        fsm_index_offset = 0
+        fsm_fallback_index = 0
     elif first.strategy_type == "first-pattern":
         genes = []
         pattern = [
@@ -807,6 +1437,72 @@ def gene_join_strategy(
         fallback_index = rng.choice(parents).fallback_index
         index_offset = rng.choice(parents).index_offset
         occurrence_number = rng.choice(parents).occurrence_number
+        block_size = 0
+        skip_blocks = []
+        lookup_offsets = []
+        fallback_policy = "random-index"
+        fsm_state_count = 0
+        fsm_start_state = 0
+        fsm_outputs = []
+        fsm_transitions = []
+        fsm_accepting_states = []
+        fsm_index_offset = 0
+        fsm_fallback_index = 0
+    elif first.strategy_type == "block-lookup":
+        genes = []
+        pattern = []
+        fallback_index = 0
+        index_offset = 0
+        occurrence_number = 1
+        block_size = first.block_size
+        skip_blocks = [
+            block
+            for block in range(2**block_size)
+            if block in set(rng.choice(parents).skip_blocks)
+        ]
+        skip_blocks = normalize_skip_blocks(skip_blocks, block_size)
+        lookup_offsets = [
+            rng.choice(parents).lookup_offsets[index]
+            for index in range(len(first.lookup_offsets))
+        ]
+        fallback_policy = rng.choice(parents).fallback_policy
+        fsm_state_count = 0
+        fsm_start_state = 0
+        fsm_outputs = []
+        fsm_transitions = []
+        fsm_accepting_states = []
+        fsm_index_offset = 0
+        fsm_fallback_index = 0
+    elif first.strategy_type == "fsm":
+        genes = []
+        pattern = []
+        fallback_index = 0
+        index_offset = 0
+        occurrence_number = 1
+        block_size = 0
+        skip_blocks = []
+        lookup_offsets = []
+        fallback_policy = "random-index"
+        fsm_state_count = first.fsm_state_count
+        fsm_start_state = rng.choice(parents).fsm_start_state
+        fsm_outputs = [
+            rng.choice(parents).fsm_outputs[index]
+            for index in range(len(first.fsm_outputs))
+        ]
+        fsm_transitions = [
+            [
+                rng.choice(parents).fsm_transitions[state][bit]
+                for bit in range(2)
+            ]
+            for state in range(first.fsm_state_count)
+        ]
+        fsm_accepting_states = [
+            state
+            for state in range(first.fsm_state_count)
+            if state in rng.choice(parents).fsm_accepting_states
+        ]
+        fsm_index_offset = rng.choice(parents).fsm_index_offset
+        fsm_fallback_index = rng.choice(parents).fsm_fallback_index
     else:
         raise ValueError(f"Unsupported strategy type: {first.strategy_type}")
 
@@ -824,6 +1520,17 @@ def gene_join_strategy(
         fallback_index=fallback_index,
         index_offset=index_offset,
         occurrence_number=occurrence_number,
+        block_size=block_size,
+        skip_blocks=skip_blocks,
+        lookup_offsets=lookup_offsets,
+        fallback_policy=fallback_policy,
+        fsm_state_count=fsm_state_count,
+        fsm_start_state=fsm_start_state,
+        fsm_outputs=fsm_outputs,
+        fsm_transitions=fsm_transitions,
+        fsm_accepting_states=fsm_accepting_states,
+        fsm_index_offset=fsm_index_offset,
+        fsm_fallback_index=fsm_fallback_index,
     )
 
 
@@ -1002,6 +1709,26 @@ def pattern_text(pattern: list[int]) -> str:
     return "".join(str(bit) for bit in pattern)
 
 
+def block_list_text(blocks: list[int], block_size: int) -> str:
+    if not blocks:
+        return "none"
+    return ", ".join(block_text(block, block_size) for block in blocks)
+
+
+def lookup_offsets_text(lookup_offsets: list[int], block_size: int) -> str:
+    return ", ".join(
+        f"{block_text(block, block_size)} -> {offset}"
+        for block, offset in enumerate(lookup_offsets)
+    )
+
+
+def fsm_transitions_text(transitions: list[list[int]]) -> str:
+    return ", ".join(
+        f"{state}:0->{transition[0]},1->{transition[1]}"
+        for state, transition in enumerate(transitions)
+    )
+
+
 def strategy_plain_description(strategy: Strategy) -> str:
     if strategy.strategy_type == "first-pattern":
         occurrence_text = (
@@ -1026,6 +1753,28 @@ def strategy_plain_description(strategy: Strategy) -> str:
             "sequence."
         )
 
+    if strategy.strategy_type == "block-lookup":
+        return (
+            "Split the generated own coin sequence into consecutive "
+            f"{strategy.block_size}-bit blocks. "
+            f"Skip blocks {block_list_text(strategy.skip_blocks, strategy.block_size)}. "
+            "For the first non-skipped block, use its lookup-table offset and "
+            "choose block start index plus that offset in the other player's "
+            f"sequence. If every complete block is skipped, use fallback policy "
+            f"{strategy.fallback_policy}."
+        )
+
+    if strategy.strategy_type == "fsm":
+        return (
+            "Run a finite-state machine over the generated own coin sequence. "
+            f"Start in state {strategy.fsm_start_state}. For each bit, follow "
+            "that state's transition for 0 or 1. If the machine reaches an "
+            "accepting state, choose acceptance index plus that state's output "
+            f"plus index offset {strategy.fsm_index_offset}. If no accepting "
+            "state is configured, choose the target index stored as the final "
+            "state's output."
+        )
+
     return f"Unsupported strategy type: {strategy.strategy_type}"
 
 
@@ -1048,6 +1797,30 @@ def strategy_table(strategy: Strategy) -> str:
                 ("Occurrence number", str(strategy.occurrence_number)),
                 ("Index offset", str(strategy.index_offset)),
                 ("Fallback index", str(strategy.fallback_index)),
+            ]
+        )
+    elif strategy.strategy_type == "block-lookup":
+        rows.extend(
+            [
+                ("Block size", str(strategy.block_size)),
+                ("Skipped blocks", block_list_text(strategy.skip_blocks, strategy.block_size)),
+                (
+                    "Lookup offsets",
+                    lookup_offsets_text(strategy.lookup_offsets, strategy.block_size),
+                ),
+                ("Fallback policy", strategy.fallback_policy),
+            ]
+        )
+    elif strategy.strategy_type == "fsm":
+        rows.extend(
+            [
+                ("State count", str(strategy.fsm_state_count)),
+                ("Start state", str(strategy.fsm_start_state)),
+                ("State outputs", ", ".join(str(output) for output in strategy.fsm_outputs)),
+                ("Transitions", fsm_transitions_text(strategy.fsm_transitions)),
+                ("Accepting states", ", ".join(str(state) for state in strategy.fsm_accepting_states) or "none"),
+                ("FSM index offset", str(strategy.fsm_index_offset)),
+                ("FSM fallback index", str(strategy.fsm_fallback_index)),
             ]
         )
     else:
@@ -1598,6 +2371,36 @@ def apply_recommended_preset(config: GAConfig) -> None:
     config.generations = 500
 
 
+def expanded_seed_count(seed_configs: list[dict]) -> int:
+    return sum(
+        seed.get("population", 1)
+        if isinstance(seed.get("population", 1), int)
+        else 1
+        for seed in seed_configs
+    )
+
+
+def add_known_triple_seed(config: GAConfig) -> None:
+    if not any(
+        seed.get("id") == "A-canonical-triple"
+        for seed in config.initial_population_A
+    ):
+        config.initial_population_A.append(canonical_triple_seed("A"))
+        config.population_size_A = max(
+            config.population_size_A,
+            expanded_seed_count(config.initial_population_A),
+        )
+    if not any(
+        seed.get("id") == "B-canonical-triple"
+        for seed in config.initial_population_B
+    ):
+        config.initial_population_B.append(canonical_triple_seed("B"))
+        config.population_size_B = max(
+            config.population_size_B,
+            expanded_seed_count(config.initial_population_B),
+        )
+
+
 def apply_cli_overrides(config: GAConfig, args: argparse.Namespace) -> None:
     for field in fields(GAConfig):
         value = getattr(args, field.name, None)
@@ -1625,6 +2428,17 @@ def validate_initial_strategy(
         "occurrence_number",
         "genes",
         "pattern",
+        "block_size",
+        "skip_blocks",
+        "lookup_offsets",
+        "fallback_policy",
+        "fsm_state_count",
+        "fsm_start_state",
+        "fsm_outputs",
+        "fsm_transitions",
+        "fsm_accepting_states",
+        "fsm_index_offset",
+        "fsm_fallback_index",
     }
     unknown_fields = sorted(set(strategy_config) - allowed_fields)
     if unknown_fields:
@@ -1635,8 +2449,13 @@ def validate_initial_strategy(
 
     strategy_type = strategy_config.get("strategy_type")
     if strategy_type is None:
-        strategy_type = "first-pattern" if "pattern" in strategy_config else "gene-table"
-    if strategy_type not in {"gene-table", "first-pattern"}:
+        if "fsm_outputs" in strategy_config or "fsm_transitions" in strategy_config:
+            strategy_type = "fsm"
+        elif "block_size" in strategy_config or "lookup_offsets" in strategy_config:
+            strategy_type = "block-lookup"
+        else:
+            strategy_type = "first-pattern" if "pattern" in strategy_config else "gene-table"
+    if strategy_type not in SUPPORTED_STRATEGY_TYPES:
         raise ValueError(
             f"initial_population_{player_type}[{index}].strategy_type is unsupported"
         )
@@ -1646,8 +2465,14 @@ def validate_initial_strategy(
         required_fields.add("observed_length")
         required_fields.add("target_choice_range")
         required_fields.add("genes")
-    else:
+    elif strategy_type == "first-pattern":
         required_fields.add("pattern")
+    elif strategy_type == "block-lookup":
+        required_fields.add("block_size")
+        required_fields.add("lookup_offsets")
+    else:
+        required_fields.add("fsm_outputs")
+        required_fields.add("fsm_transitions")
     missing_fields = sorted(required_fields - set(strategy_config))
     if missing_fields:
         missing = ", ".join(missing_fields)
@@ -1669,6 +2494,20 @@ def validate_initial_strategy(
     occurrence_number = strategy_config.get("occurrence_number", 1)
     genes = strategy_config.get("genes", [])
     pattern = strategy_config.get("pattern", [])
+    block_size = strategy_config.get("block_size", 0)
+    skip_blocks = strategy_config.get("skip_blocks", [])
+    lookup_offsets = strategy_config.get("lookup_offsets", [])
+    fallback_policy = strategy_config.get(
+        "fallback_policy",
+        config.block_lookup_fallback_policy,
+    )
+    fsm_state_count = strategy_config.get("fsm_state_count", len(strategy_config.get("fsm_outputs", [])))
+    fsm_start_state = strategy_config.get("fsm_start_state", 0)
+    fsm_outputs = strategy_config.get("fsm_outputs", [])
+    fsm_transitions = strategy_config.get("fsm_transitions", [])
+    fsm_accepting_states = strategy_config.get("fsm_accepting_states", [])
+    fsm_index_offset = strategy_config.get("fsm_index_offset", 0)
+    fsm_fallback_index = strategy_config.get("fsm_fallback_index", 0)
 
     if not isinstance(observed_length, int):
         raise ValueError(
@@ -1703,6 +2542,50 @@ def validate_initial_strategy(
     if not isinstance(pattern, list):
         raise ValueError(
             f"initial_population_{player_type}[{index}].pattern must be a list"
+        )
+    if not isinstance(block_size, int):
+        raise ValueError(
+            f"initial_population_{player_type}[{index}].block_size must be int"
+        )
+    if not isinstance(skip_blocks, list):
+        raise ValueError(
+            f"initial_population_{player_type}[{index}].skip_blocks must be a list"
+        )
+    if not isinstance(lookup_offsets, list):
+        raise ValueError(
+            f"initial_population_{player_type}[{index}].lookup_offsets must be a list"
+        )
+    if not isinstance(fallback_policy, str):
+        raise ValueError(
+            f"initial_population_{player_type}[{index}].fallback_policy must be str"
+        )
+    if not isinstance(fsm_state_count, int):
+        raise ValueError(
+            f"initial_population_{player_type}[{index}].fsm_state_count must be int"
+        )
+    if not isinstance(fsm_start_state, int):
+        raise ValueError(
+            f"initial_population_{player_type}[{index}].fsm_start_state must be int"
+        )
+    if not isinstance(fsm_outputs, list):
+        raise ValueError(
+            f"initial_population_{player_type}[{index}].fsm_outputs must be a list"
+        )
+    if not isinstance(fsm_transitions, list):
+        raise ValueError(
+            f"initial_population_{player_type}[{index}].fsm_transitions must be a list"
+        )
+    if not isinstance(fsm_accepting_states, list):
+        raise ValueError(
+            f"initial_population_{player_type}[{index}].fsm_accepting_states must be a list"
+        )
+    if not isinstance(fsm_index_offset, int):
+        raise ValueError(
+            f"initial_population_{player_type}[{index}].fsm_index_offset must be int"
+        )
+    if not isinstance(fsm_fallback_index, int):
+        raise ValueError(
+            f"initial_population_{player_type}[{index}].fsm_fallback_index must be int"
         )
 
     if (
@@ -1797,6 +2680,133 @@ def validate_initial_strategy(
             raise ValueError(
                 f"initial_population_{player_type}[{index}].pattern must contain bits"
             )
+    if strategy_type == "block-lookup":
+        if observed_length != 0 and not config.observed_length_min <= observed_length <= config.observed_length_max:
+            raise ValueError(
+                f"initial_population_{player_type}[{index}].observed_length is outside "
+                "configured bounds"
+            )
+        if not (
+            config.block_lookup_block_size_min
+            <= block_size
+            <= config.block_lookup_block_size_max
+        ):
+            raise ValueError(
+                f"initial_population_{player_type}[{index}].block_size is outside "
+                "configured bounds"
+            )
+        block_count = 2**block_size
+        if len(lookup_offsets) != block_count:
+            raise ValueError(
+                f"initial_population_{player_type}[{index}].lookup_offsets must contain "
+                f"{block_count} values"
+            )
+        if not all(isinstance(offset, int) for offset in lookup_offsets):
+            raise ValueError(
+                f"initial_population_{player_type}[{index}].lookup_offsets must be ints"
+            )
+        if not all(0 <= offset < block_size for offset in lookup_offsets):
+            raise ValueError(
+                f"initial_population_{player_type}[{index}].lookup_offsets must be "
+                "local block offsets"
+            )
+        if not all(isinstance(block, int) for block in skip_blocks):
+            raise ValueError(
+                f"initial_population_{player_type}[{index}].skip_blocks must be ints"
+            )
+        if not all(0 <= block < block_count for block in skip_blocks):
+            raise ValueError(
+                f"initial_population_{player_type}[{index}].skip_blocks must be valid "
+                "block values"
+            )
+        if len(set(skip_blocks)) != len(skip_blocks):
+            raise ValueError(
+                f"initial_population_{player_type}[{index}].skip_blocks cannot contain "
+                "duplicates"
+            )
+        if len(skip_blocks) == block_count:
+            raise ValueError(
+                f"initial_population_{player_type}[{index}].skip_blocks cannot skip "
+                "every block"
+            )
+        normalize_fallback_policy(fallback_policy)
+    if strategy_type == "fsm":
+        if observed_length != 0 and not config.observed_length_min <= observed_length <= config.observed_length_max:
+            raise ValueError(
+                f"initial_population_{player_type}[{index}].observed_length is outside "
+                "configured bounds"
+            )
+        if not config.fsm_state_count_min <= fsm_state_count <= config.fsm_state_count_max:
+            raise ValueError(
+                f"initial_population_{player_type}[{index}].fsm_state_count is outside "
+                "configured bounds"
+            )
+        if not 0 <= fsm_start_state < fsm_state_count:
+            raise ValueError(
+                f"initial_population_{player_type}[{index}].fsm_start_state must be "
+                "a valid state"
+            )
+        if len(fsm_outputs) != fsm_state_count:
+            raise ValueError(
+                f"initial_population_{player_type}[{index}].fsm_outputs must contain "
+                f"{fsm_state_count} values"
+            )
+        if len(fsm_transitions) != fsm_state_count:
+            raise ValueError(
+                f"initial_population_{player_type}[{index}].fsm_transitions must contain "
+                f"{fsm_state_count} rows"
+            )
+        if not all(isinstance(state, int) for state in fsm_accepting_states):
+            raise ValueError(
+                f"initial_population_{player_type}[{index}].fsm_accepting_states must be ints"
+            )
+        if not all(0 <= state < fsm_state_count for state in fsm_accepting_states):
+            raise ValueError(
+                f"initial_population_{player_type}[{index}].fsm_accepting_states must "
+                "reference valid states"
+            )
+        if len(set(fsm_accepting_states)) != len(fsm_accepting_states):
+            raise ValueError(
+                f"initial_population_{player_type}[{index}].fsm_accepting_states "
+                "cannot contain duplicates"
+            )
+        if not config.fsm_index_offset_min <= fsm_index_offset <= config.fsm_index_offset_max:
+            raise ValueError(
+                f"initial_population_{player_type}[{index}].fsm_index_offset is outside "
+                "configured bounds"
+            )
+        if not config.fsm_fallback_index_min <= fsm_fallback_index <= config.fsm_fallback_index_max:
+            raise ValueError(
+                f"initial_population_{player_type}[{index}].fsm_fallback_index is outside "
+                "configured bounds"
+            )
+        if not all(isinstance(output, int) for output in fsm_outputs):
+            raise ValueError(
+                f"initial_population_{player_type}[{index}].fsm_outputs must be ints"
+            )
+        if not all(
+            config.fsm_output_index_min <= output <= config.fsm_output_index_max
+            for output in fsm_outputs
+        ):
+            raise ValueError(
+                f"initial_population_{player_type}[{index}].fsm_outputs are outside "
+                "configured bounds"
+            )
+        for row_index, transition in enumerate(fsm_transitions):
+            if (
+                not isinstance(transition, list)
+                or len(transition) != 2
+                or not all(isinstance(state, int) for state in transition)
+            ):
+                raise ValueError(
+                    f"initial_population_{player_type}[{index}].fsm_transitions"
+                    f"[{row_index}] must contain two state ints"
+                )
+            if not all(0 <= state < fsm_state_count for state in transition):
+                raise ValueError(
+                    f"initial_population_{player_type}[{index}].fsm_transitions"
+                    f"[{row_index}] must reference valid states"
+                )
 
 
 def validate_initial_population(
@@ -1917,6 +2927,34 @@ def parse_args(argv: Iterable[str]) -> GAConfig:
         type=positive_int,
         dest="first_pattern_occurrence_max",
     )
+    parser.add_argument(
+        "--block-lookup-block-size-min",
+        type=positive_int,
+        dest="block_lookup_block_size_min",
+    )
+    parser.add_argument(
+        "--block-lookup-block-size-max",
+        type=positive_int,
+        dest="block_lookup_block_size_max",
+    )
+    parser.add_argument(
+        "--block-lookup-fallback-policy",
+        choices=sorted(BLOCK_LOOKUP_FALLBACK_POLICIES),
+        dest="block_lookup_fallback_policy",
+    )
+    parser.add_argument(
+        "--block-size",
+        type=positive_int,
+        help="Shortcut for setting both block lookup block-size bounds.",
+    )
+    parser.add_argument("--fsm-state-count-min", type=positive_int, dest="fsm_state_count_min")
+    parser.add_argument("--fsm-state-count-max", type=positive_int, dest="fsm_state_count_max")
+    parser.add_argument("--fsm-output-index-min", type=non_negative_int, dest="fsm_output_index_min")
+    parser.add_argument("--fsm-output-index-max", type=non_negative_int, dest="fsm_output_index_max")
+    parser.add_argument("--fsm-index-offset-min", type=int, dest="fsm_index_offset_min")
+    parser.add_argument("--fsm-index-offset-max", type=int, dest="fsm_index_offset_max")
+    parser.add_argument("--fsm-fallback-index-min", type=non_negative_int, dest="fsm_fallback_index_min")
+    parser.add_argument("--fsm-fallback-index-max", type=non_negative_int, dest="fsm_fallback_index_max")
     parser.add_argument("--elite-count", type=int, dest="elite_count")
     parser.add_argument("--selection-pressure", type=float, dest="selection_pressure")
     parser.add_argument("--mutation-rate", type=float, dest="mutation_rate")
@@ -1956,8 +2994,24 @@ def parse_args(argv: Iterable[str]) -> GAConfig:
     )
     parser.add_argument(
         "--default-strategy-type",
-        choices=["gene-table", "first-pattern"],
+        choices=sorted(SUPPORTED_STRATEGY_TYPES),
         dest="default_strategy_type",
+    )
+    parser.add_argument(
+        "--strategy-family",
+        choices=sorted(SUPPORTED_STRATEGY_TYPES),
+        dest="default_strategy_type",
+        help="Alias for --default-strategy-type.",
+    )
+    parser.add_argument(
+        "--seed-known-triple-strategy",
+        action="store_true",
+        help="Append the canonical 3-bit block lookup strategy to both populations.",
+    )
+    parser.add_argument(
+        "--allow-asymmetric",
+        action="store_true",
+        help="Accepted for spec-compatible commands; A/B populations are already asymmetric.",
     )
     parser.add_argument("--output-dir", dest="output_dir")
     parser.add_argument("--seed", type=int)
@@ -1978,6 +3032,11 @@ def parse_args(argv: Iterable[str]) -> GAConfig:
         apply_recommended_preset(config)
 
     apply_cli_overrides(config, args)
+    if args.block_size is not None:
+        config.block_lookup_block_size_min = args.block_size
+        config.block_lookup_block_size_max = args.block_size
+    if args.seed_known_triple_strategy:
+        add_known_triple_seed(config)
     validate_config(config)
     return config
 
@@ -2025,7 +3084,32 @@ def validate_config(config: GAConfig) -> None:
         raise ValueError("first_pattern_observed_length_max cannot exceed sequence_length")
     if config.observed_length_max > config.sequence_length:
         raise ValueError("observed_length_max cannot exceed sequence_length")
-    if config.default_strategy_type not in {"gene-table", "first-pattern"}:
+    if config.block_lookup_block_size_min <= 0:
+        raise ValueError("block_lookup_block_size_min must be positive")
+    if config.block_lookup_block_size_max < config.block_lookup_block_size_min:
+        raise ValueError("block_lookup_block_size_max cannot be smaller than min")
+    if config.block_lookup_block_size_max > config.sequence_length:
+        raise ValueError("block_lookup_block_size_max cannot exceed sequence_length")
+    normalize_fallback_policy(config.block_lookup_fallback_policy)
+    if config.fsm_state_count_min <= 0:
+        raise ValueError("fsm_state_count_min must be positive")
+    if config.fsm_state_count_max < config.fsm_state_count_min:
+        raise ValueError("fsm_state_count_max cannot be smaller than min")
+    if config.fsm_output_index_min < 0:
+        raise ValueError("fsm_output_index_min cannot be negative")
+    if config.fsm_output_index_max < config.fsm_output_index_min:
+        raise ValueError("fsm_output_index_max cannot be smaller than min")
+    if config.fsm_output_index_max >= config.sequence_length:
+        raise ValueError("fsm_output_index_max must be within sequence_length")
+    if config.fsm_index_offset_min > config.fsm_index_offset_max:
+        raise ValueError("fsm_index_offset_min cannot exceed max")
+    if config.fsm_fallback_index_min < 0:
+        raise ValueError("fsm_fallback_index_min cannot be negative")
+    if config.fsm_fallback_index_max < config.fsm_fallback_index_min:
+        raise ValueError("fsm_fallback_index_max cannot be smaller than min")
+    if config.fsm_fallback_index_max >= config.sequence_length:
+        raise ValueError("fsm_fallback_index_max must be within sequence_length")
+    if config.default_strategy_type not in SUPPORTED_STRATEGY_TYPES:
         raise ValueError("default_strategy_type is unsupported")
     if config.default_strategy_type == "gene-table" and config.target_choice_range_min <= 0:
         raise ValueError(

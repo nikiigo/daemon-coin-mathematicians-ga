@@ -1,9 +1,9 @@
 [ga]
 # Maximum number of strategies allowed for Player A.
-population_size_A = 200
+population_size_A = 244
 
 # Maximum number of strategies allowed for Player B.
-population_size_B = 200
+population_size_B = 244
 
 # Minimum observed length for gene-table strategies. For first-pattern this is
 # used as the minimum random pattern length.
@@ -44,6 +44,33 @@ first_pattern_index_offset_max = 10
 # occurrence, 2 means second occurrence.
 first_pattern_occurrence_min = 1
 first_pattern_occurrence_max = 2
+
+# Random block-size range for block-lookup strategies. Mutation can evolve block
+# size within this inclusive range.
+block_lookup_block_size_min = 1
+block_lookup_block_size_max = 4
+
+# Fallback policy for block-lookup strategies when every complete block is
+# skipped or no complete block exists. Supported values:
+# "random-index", "first-index", "last-index", "random-block", and "none".
+block_lookup_fallback_policy = "random-index"
+
+# Random state-count range for finite-state-machine strategies. Mutation can
+# add or remove states within this inclusive range.
+fsm_state_count_min = 2
+fsm_state_count_max = 6
+
+# Output-index range for FSM states. After the FSM reads its observed bits, the
+# output of the final state is the chosen target index.
+fsm_output_index_min = 0
+fsm_output_index_max = 10
+
+# Offset and fallback ranges for FSMs that use accepting states. On acceptance,
+# the target index is acceptance_index + state_output + fsm_index_offset.
+fsm_index_offset_min = -10
+fsm_index_offset_max = 10
+fsm_fallback_index_min = 0
+fsm_fallback_index_max = 10
 
 # Monte Carlo trials used to score each A/B strategy pair. Higher values reduce
 # random noise in survival estimates but increase runtime.
@@ -101,7 +128,7 @@ epsilon = 1e-12
 success_condition = "same-bit"
 
 # Strategy type used for randomly generated population slots. Supported values:
-# "first-pattern" and "gene-table".
+# "first-pattern", "gene-table", and "block-lookup".
 default_strategy_type = "first-pattern"
 
 # Directory where CSV, JSON, score matrices, and population snapshots are saved.
@@ -116,7 +143,7 @@ output_dir = "ga_output"
 # Seed fields:
 # - id: human-readable strategy identifier used in reports and artifacts.
 # - population: number of generation-0 copies to create from this strategy.
-# - strategy_type: "first-pattern" or "gene-table".
+# - strategy_type: "first-pattern", "gene-table", or "block-lookup".
 # - observed_length: optional for first-pattern; 0 or omitted means unbounded.
 # - target_choice_range: gene-table only; exclusive upper bound for gene values.
 # - fallback_index: optional for first-pattern; used when pattern is absent.
@@ -124,6 +151,261 @@ output_dir = "ga_output"
 # - occurrence_number: optional for first-pattern; 1 first occurrence, 2 second.
 # - pattern: for first-pattern, the bit pattern to search for.
 # - genes: for gene-table, one target index for each possible observed prefix.
+# - block_size: for block-lookup, size of consecutive bit blocks.
+# - skip_blocks: for block-lookup, integer block values to skip.
+# - lookup_offsets: for block-lookup, local offset per block value.
+# - fallback_policy: for block-lookup, fallback when no block is selected.
+# - fsm_state_count: for FSM, number of states.
+# - fsm_start_state: for FSM, state used before reading observed bits.
+# - fsm_outputs: for FSM, target index emitted by each state.
+# - fsm_transitions: for FSM, one [next_on_0, next_on_1] row per state.
+# - fsm_accepting_states: for FSM, states that immediately choose a target.
+# - fsm_index_offset: for accepting FSMs, added to acceptance index and output.
+# - fsm_fallback_index: for accepting FSMs, used when no accepting state is hit.
+
+[[ga.initial_population_A]]
+id = "A-fsm-first-0"
+strategy_type = "fsm"
+population = 4
+observed_length = 0
+fsm_state_count = 2
+fsm_start_state = 0
+fsm_outputs = [0, 2]
+fsm_transitions = [[1, 0], [1, 1]]
+fsm_accepting_states = [1]
+fsm_index_offset = 0
+fsm_fallback_index = 0
+
+[[ga.initial_population_B]]
+id = "B-fsm-first-0"
+strategy_type = "fsm"
+population = 4
+observed_length = 0
+fsm_state_count = 2
+fsm_start_state = 0
+fsm_outputs = [0, 2]
+fsm_transitions = [[1, 0], [1, 1]]
+fsm_accepting_states = [1]
+fsm_index_offset = 0
+fsm_fallback_index = 0
+
+[[ga.initial_population_A]]
+id = "A-fsm-first-1"
+strategy_type = "fsm"
+population = 4
+observed_length = 0
+fsm_state_count = 2
+fsm_start_state = 0
+fsm_outputs = [0, 2]
+fsm_transitions = [[0, 1], [1, 1]]
+fsm_accepting_states = [1]
+fsm_index_offset = 0
+fsm_fallback_index = 0
+
+[[ga.initial_population_B]]
+id = "B-fsm-first-1"
+strategy_type = "fsm"
+population = 4
+observed_length = 0
+fsm_state_count = 2
+fsm_start_state = 0
+fsm_outputs = [0, 2]
+fsm_transitions = [[0, 1], [1, 1]]
+fsm_accepting_states = [1]
+fsm_index_offset = 0
+fsm_fallback_index = 0
+
+[[ga.initial_population_A]]
+id = "A-fsm-first-01"
+strategy_type = "fsm"
+population = 4
+observed_length = 0
+fsm_state_count = 3
+fsm_start_state = 0
+fsm_outputs = [0, 0, 2]
+fsm_transitions = [[1, 0], [1, 2], [2, 2]]
+fsm_accepting_states = [2]
+fsm_index_offset = 0
+fsm_fallback_index = 0
+
+[[ga.initial_population_B]]
+id = "B-fsm-first-01"
+strategy_type = "fsm"
+population = 4
+observed_length = 0
+fsm_state_count = 3
+fsm_start_state = 0
+fsm_outputs = [0, 0, 2]
+fsm_transitions = [[1, 0], [1, 2], [2, 2]]
+fsm_accepting_states = [2]
+fsm_index_offset = 0
+fsm_fallback_index = 0
+
+[[ga.initial_population_A]]
+id = "A-fsm-best-observed"
+strategy_type = "fsm"
+population = 4
+observed_length = 0
+fsm_state_count = 3
+fsm_start_state = 0
+fsm_outputs = [0, 2, 0]
+fsm_transitions = [[1, 0], [1, 1], [2, 2]]
+fsm_accepting_states = [0, 1]
+fsm_index_offset = 0
+fsm_fallback_index = 0
+
+[[ga.initial_population_B]]
+id = "B-fsm-best-observed"
+strategy_type = "fsm"
+population = 4
+observed_length = 0
+fsm_state_count = 2
+fsm_start_state = 0
+fsm_outputs = [0, 2]
+fsm_transitions = [[0, 1], [1, 1]]
+fsm_accepting_states = [1]
+fsm_index_offset = -1
+fsm_fallback_index = 1
+
+[[ga.initial_population_A]]
+id = "A-fsm-last-bit"
+strategy_type = "fsm"
+population = 4
+observed_length = 0
+fsm_state_count = 2
+fsm_start_state = 0
+fsm_outputs = [0, 1]
+fsm_transitions = [[0, 1], [0, 1]]
+
+[[ga.initial_population_B]]
+id = "B-fsm-last-bit"
+strategy_type = "fsm"
+population = 4
+observed_length = 0
+fsm_state_count = 2
+fsm_start_state = 0
+fsm_outputs = [0, 1]
+fsm_transitions = [[0, 1], [0, 1]]
+
+[[ga.initial_population_A]]
+id = "A-fsm-parity"
+strategy_type = "fsm"
+population = 4
+observed_length = 0
+fsm_state_count = 2
+fsm_start_state = 0
+fsm_outputs = [0, 1]
+fsm_transitions = [[0, 1], [1, 0]]
+
+[[ga.initial_population_B]]
+id = "B-fsm-parity"
+strategy_type = "fsm"
+population = 4
+observed_length = 0
+fsm_state_count = 2
+fsm_start_state = 0
+fsm_outputs = [0, 1]
+fsm_transitions = [[0, 1], [1, 0]]
+
+[[ga.initial_population_A]]
+id = "A-fsm-two-ones"
+strategy_type = "fsm"
+population = 4
+observed_length = 0
+fsm_state_count = 3
+fsm_start_state = 0
+fsm_outputs = [0, 1, 2]
+fsm_transitions = [[0, 1], [0, 2], [0, 2]]
+
+[[ga.initial_population_B]]
+id = "B-fsm-two-ones"
+strategy_type = "fsm"
+population = 4
+observed_length = 0
+fsm_state_count = 3
+fsm_start_state = 0
+fsm_outputs = [0, 1, 2]
+fsm_transitions = [[0, 1], [0, 2], [0, 2]]
+
+[[ga.initial_population_A]]
+id = "A-block-1"
+strategy_type = "block-lookup"
+population = 4
+observed_length = 0
+block_size = 1
+skip_blocks = []
+lookup_offsets = [0, 0]
+fallback_policy = "random-index"
+
+[[ga.initial_population_B]]
+id = "B-block-1"
+strategy_type = "block-lookup"
+population = 4
+observed_length = 0
+block_size = 1
+skip_blocks = []
+lookup_offsets = [0, 0]
+fallback_policy = "random-index"
+
+[[ga.initial_population_A]]
+id = "A-block-2"
+strategy_type = "block-lookup"
+population = 4
+observed_length = 0
+block_size = 2
+skip_blocks = [0, 3]
+lookup_offsets = [0, 0, 1, 0]
+fallback_policy = "random-index"
+
+[[ga.initial_population_B]]
+id = "B-block-2"
+strategy_type = "block-lookup"
+population = 4
+observed_length = 0
+block_size = 2
+skip_blocks = [0, 3]
+lookup_offsets = [0, 0, 1, 0]
+fallback_policy = "random-index"
+
+[[ga.initial_population_A]]
+id = "A-canonical-triple"
+strategy_type = "block-lookup"
+population = 4
+observed_length = 0
+block_size = 3
+skip_blocks = [0, 7]
+lookup_offsets = [0, 0, 1, 0, 2, 2, 1, 0]
+fallback_policy = "random-index"
+
+[[ga.initial_population_B]]
+id = "B-canonical-triple"
+strategy_type = "block-lookup"
+population = 4
+observed_length = 0
+block_size = 3
+skip_blocks = [0, 7]
+lookup_offsets = [0, 0, 1, 0, 2, 2, 1, 0]
+fallback_policy = "random-index"
+
+[[ga.initial_population_A]]
+id = "A-block-4"
+strategy_type = "block-lookup"
+population = 4
+observed_length = 0
+block_size = 4
+skip_blocks = [0, 15]
+lookup_offsets = [0, 0, 1, 1, 2, 0, 2, 0, 3, 1, 3, 1, 2, 2, 3, 0]
+fallback_policy = "random-index"
+
+[[ga.initial_population_B]]
+id = "B-block-4"
+strategy_type = "block-lookup"
+population = 4
+observed_length = 0
+block_size = 4
+skip_blocks = [0, 15]
+lookup_offsets = [0, 0, 1, 1, 2, 0, 2, 0, 3, 1, 3, 1, 2, 2, 3, 0]
+fallback_policy = "random-index"
 
 [[ga.initial_population_A]]
 id = "A-first-0"

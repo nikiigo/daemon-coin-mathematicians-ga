@@ -31,6 +31,17 @@ def strategy_label(strategy: dict) -> str:
             f"pattern {pattern}, occurrence {strategy.get('occurrence_number', 1)}, "
             f"offset {strategy['index_offset']}, fallback {strategy['fallback_index']}"
         )
+    if strategy["strategy_type"] == "block-lookup":
+        return (
+            f"block lookup, block size {strategy['block_size']}, "
+            f"skip {strategy['skip_blocks']}, fallback {strategy['fallback_policy']}"
+        )
+    if strategy["strategy_type"] == "fsm":
+        return (
+            f"fsm, states {strategy['fsm_state_count']}, "
+            f"start {strategy['fsm_start_state']}, outputs {strategy['fsm_outputs']}, "
+            f"accepting {strategy.get('fsm_accepting_states', [])}"
+        )
     return (
         f"gene table, observed length {strategy['observed_length']}, "
         f"{len(strategy['genes'])} genes"
@@ -109,6 +120,12 @@ def minimum_sequence_length(
             strategy_b.target_choice_range,
             strategy_a.fallback_index + 1,
             strategy_b.fallback_index + 1,
+            strategy_a.block_size,
+            strategy_b.block_size,
+            max(strategy_a.fsm_outputs, default=0) + 1,
+            max(strategy_b.fsm_outputs, default=0) + 1,
+            strategy_a.fsm_fallback_index + 1,
+            strategy_b.fsm_fallback_index + 1,
         )
     return length
 
@@ -163,9 +180,21 @@ def run_shared_trials_batch(
         pair_results = []
 
         for pair_index, (strategy_a, strategy_b) in enumerate(pairs):
-            target_in_b = choose_target_index(strategy_a, observed_bits(strategy_a, sequence_a))
-            target_in_a = choose_target_index(strategy_b, observed_bits(strategy_b, sequence_b))
-            survived = int(success_condition(sequence_a[target_in_a], sequence_b[target_in_b]))
+            target_in_b = choose_target_index(
+                strategy_a,
+                observed_bits(strategy_a, sequence_a),
+                rng,
+            )
+            target_in_a = choose_target_index(
+                strategy_b,
+                observed_bits(strategy_b, sequence_b),
+                rng,
+            )
+            survived = int(
+                target_in_a is not None
+                and target_in_b is not None
+                and success_condition(sequence_a[target_in_a], sequence_b[target_in_b])
+            )
             pair_results.append(survived)
             wins[pair_index] += survived
 
@@ -187,6 +216,19 @@ def interval_label(sigma: float) -> str:
 def normal_ci(rate: float, trials: int, sigma: float = 1.96) -> tuple[float, float]:
     standard_error = math.sqrt(rate * (1 - rate) / trials)
     return rate - sigma * standard_error, rate + sigma * standard_error
+
+
+def binomial_standard_error(rate: float, trials: int) -> float:
+    return math.sqrt(rate * (1 - rate) / trials)
+
+
+def z_score_against(rate: float, trials: int, baseline: float) -> float:
+    standard_error = binomial_standard_error(rate, trials)
+    if standard_error == 0:
+        if rate == baseline:
+            return 0.0
+        return math.inf if rate > baseline else -math.inf
+    return (rate - baseline) / standard_error
 
 
 def difference_ci(
@@ -222,6 +264,7 @@ def comparison_rows(
     ):
         rate = win_count / trials
         ci_low, ci_high = normal_ci(rate, trials, sigma)
+        standard_error = binomial_standard_error(rate, trials)
         pairwise = []
         for other_index, other_pair in enumerate(pairs):
             mean_diff, diff_low, diff_high = difference_ci(
@@ -250,9 +293,13 @@ def comparison_rows(
                 "strategy_B": pair.strategy_B_id,
                 "ga_score": pair.score,
                 "checked_score": rate,
+                "standard_error": standard_error,
                 "ci95_low": ci_low,
                 "ci95_high": ci_high,
                 "sigma": sigma,
+                "z_score_vs_0_5": z_score_against(rate, trials, 0.5),
+                "z_score_vs_2_3": z_score_against(rate, trials, 2 / 3),
+                "z_score_vs_0_7": z_score_against(rate, trials, 0.7),
                 "wins": win_count,
                 "trials": trials,
                 "strategy_A_definition": asdict(strategy_a),
@@ -436,9 +483,13 @@ def write_outputs(output_dir: Path, rows: list[dict]) -> None:
                 "strategy_B",
                 "ga_score",
                 "checked_score",
+                "standard_error",
                 "ci95_low",
                 "ci95_high",
                 "sigma",
+                "z_score_vs_0_5",
+                "z_score_vs_2_3",
+                "z_score_vs_0_7",
                 "wins",
                 "trials",
                 "sequential",
@@ -513,6 +564,9 @@ def render_html_report(rows: list[dict]) -> str:
           <td><code>{html.escape(row['strategy_B'])}</code></td>
           <td>{pct(row['checked_score'])}</td>
           <td>{pct(row['ci95_low'])} to {pct(row['ci95_high'])}</td>
+          <td>{row['z_score_vs_0_5']:.2f}</td>
+          <td>{row['z_score_vs_2_3']:.2f}</td>
+          <td>{row['z_score_vs_0_7']:.2f}</td>
           <td>{row['rank']}</td>
           <td>{pct(row['ga_score'])}</td>
         </tr>
@@ -527,6 +581,10 @@ def render_html_report(rows: list[dict]) -> str:
             Certainty rank: <strong>{html.escape(row['certainty_group_label'])}</strong>.
             Fresh-check score: <strong>{pct(row['checked_score'])}</strong>
             with {html.escape(interval_label(row.get('sigma', 1.96)))} {pct(row['ci95_low'])} to {pct(row['ci95_high'])}.
+            Standard error is {pct(row['standard_error'])}; z-scores are
+            {row['z_score_vs_0_5']:.2f} vs 50%,
+            {row['z_score_vs_2_3']:.2f} vs 66.67%, and
+            {row['z_score_vs_0_7']:.2f} vs 70%.
             Original GA rank {row['rank']} scored {pct(row['ga_score'])}.
           </p>
           <div class="grid">
@@ -628,6 +686,9 @@ def render_html_report(rows: list[dict]) -> str:
         <th>Strategy B</th>
         <th>Checked score</th>
         <th>{html.escape(label)}</th>
+        <th>z vs 50%</th>
+        <th>z vs 66.67%</th>
+        <th>z vs 70%</th>
         <th>GA rank</th>
         <th>GA score</th>
       </tr>

@@ -1,201 +1,203 @@
-# daemon-coin-mathematicians
+# daemon-coin-mathematicians-ga
 
-Monte Carlo simulation for the “daemon coin” probability game.  
-Inspired by: https://youtu.be/oAj4xPXKzwg
+Genetic algorithm experiments for the daemon coin coordination problem.
 
----
+Two players see separate random binary sequences. Each player must choose an
+index in the other player's hidden sequence. A pair survives when the selected
+bits match. The program estimates strategy quality with Monte Carlo trials and
+evolves strategy populations over generations.
 
-## Overview
+## Current Strategy Model
 
-This project simulates a coordination problem under incomplete information.
+The main strategy type is `first-pattern`.
 
-Two players observe different halves of the same conceptual infinite coin-toss process and must independently choose hidden positions.  
-The objective is to design a shared strategy that gives them a probability of success greater than 50%.
+A `first-pattern` strategy:
 
-The implementation uses **Monte Carlo simulation** and **pattern-based stopping rules**.
+1. Observes its own generated bit sequence.
+2. Searches for occurrence number `occurrence_number` of `pattern`.
+3. If that occurrence exists, chooses `occurrence_index + index_offset`, clamped into the sequence bounds.
+4. If that occurrence is absent, chooses `fallback_index`.
 
----
+`occurrence_number = 1` means first occurrence. `occurrence_number = 2` means
+second occurrence.
 
-## Problem Statement
+`observed_length = 0` means unbounded observation within the finite simulated
+`sequence_length`. A positive `observed_length` means the strategy only searches
+the first N bits.
 
-An Evil Spirit captures two mathematicians and isolates them in separate rooms.
+The code also retains a `gene-table` strategy type for lookup-table experiments,
+but the default config uses `first-pattern`.
 
-He flips a fair coin infinitely many times:
+## Configuration
 
-- Player A observes the outcomes of all **even-indexed** tosses
-- Player B observes the outcomes of all **odd-indexed** tosses
-
-Each player must then choose the index of a toss whose value is **unknown** to them:
-
-- Player A must choose an **odd** index
-- Player B must choose an **even** index
-
-### Winning Condition
-
-- If the values at the two chosen positions are equal → both players survive
-- Otherwise → both players lose
-
-Before separation, they are allowed to agree on a deterministic strategy.
-
----
-
-## What This Program Simulates
-
-The code approximates the infinite process using two finite random binary sequences.
-
-For each trial:
-
-1. Two random binary sequences are generated
-2. Each player searches their own sequence for the **first occurrence** of a configured pattern
-3. The index found by Player A is applied to Player B’s sequence
-4. The index found by Player B is applied to Player A’s sequence
-5. If the two selected values are equal, the trial counts as success
-
-In code terms, success is evaluated by comparing:
-
-```python
-mathematist1[index2] == mathematist2[index1]
-```
-
----
-
-## Strategy
-
-The implemented strategy is based on **pattern matching**.
-
-Each player:
-
-1. Observes their own binary sequence
-2. Searches for the **first occurrence** of a predefined pattern
-3. Uses the position of that occurrence as their effective choice
-
-Patterns are configured like this:
-
-```python
-m1_pattern = r"0"
-m2_pattern = r"0"
-```
-
-The implementation uses Python regular expressions, so patterns are interpreted as regex expressions.
-
----
-
-## Random Pattern Mode
-
-The code also supports a mode where both players use the same randomly generated pattern.
-
-Example configuration:
-
-```python
-random_pattern = True
-random_pattern_length = 3
-```
-
-In this mode:
-
-- one random binary pattern is generated
-- both players use that same pattern
-- the simulation estimates the corresponding survival probability
-
----
-
-## Default Parameters
-
-```python
-random_pattern = False
-random_pattern_length = 3
-m1_pattern = r"0"
-m2_pattern = r"0"
-trials = 10000
-serie_length = 1000
-```
-
----
-
-## Example Results
-
-Some example outcomes produced by this strategy family:
-
-| Patterns        | Estimated Survival Probability |
-|----------------|--------------------------------|
-| `[0, 0]`       | ~66.78%                        |
-| `[01, 01]`     | ~55.10%                        |
-| `[01, 00]`     | ~62.55%                        |
-| Random length 3| ~51.78%                        |
-
-Because this is a Monte Carlo simulation, exact values may vary slightly between runs.
-
----
-
-## Key Insight
-
-Even though each player sees only half of the underlying random process, carefully coordinated stopping rules can create statistical dependence between their choices.
-
-That dependence allows them to outperform naive random guessing and achieve:
-
-```text
-P(success) > 0.5
-```
-
-without communication after separation.
-
----
-
-## Notes and Limitations
-
-- The simulation uses **finite** sequences, not truly infinite ones
-- Pattern search is based on the **first match**
-- Sequence length must be large enough so the configured pattern is likely to appear
-- Since regular expressions are used, pattern syntax follows Python `re` semantics
-- Results are empirical estimates rather than formal proofs
-
----
-
-## How to Run
+Runtime settings are read from `config.toml` by default:
 
 ```bash
-git clone https://github.com/nikiigo/daemon-coin-mathematicians.git
-cd daemon-coin-mathematicians
 python daemon_coin.py
 ```
 
----
+Use another config file or override common values from the CLI:
 
-## Output Example
-
-Example output for fixed patterns:
-
-```text
-Patterns: [0 0]. The survival ratio is approximately 66.78%.
+```bash
+python daemon_coin.py --config config.toml --generations 50 --trials-per-pair 1000
 ```
 
-Example output for random-pattern mode:
+Current important defaults in `config.toml`:
 
-```text
-Random pattern with length 3. The survival ratio is approximately 51.78%.
+```toml
+population_size_A = 200
+population_size_B = 200
+trials_per_pair = 10000
+sequence_length = 1000
+generations = 20
+max_children_per_strategy = 4
+
+disable_observed_length_mutation = true
+disable_fallback_index_mutation = true
+
+first_pattern_occurrence_min = 1
+first_pattern_occurrence_max = 2
 ```
 
----
+`population_size_A` and `population_size_B` are maximum population sizes. If
+seed strategies are configured, generation 0 is exactly the expanded seed
+population, capped by those values. If no seeds are configured for a side, that
+side is randomly filled to its maximum.
 
-## File Structure
+With 200 strategies per side and 10000 trials, each generation evaluates about
+400,000,000 A/B pair outcomes before duplicate-strategy optimization. Lower
+`trials_per_pair` for faster exploratory runs.
 
-```text
-daemon_coin.py   # main simulation script
+## Selection
+
+Each strategy's `survival_ratio` is its best observed score with any strategy on
+the opposite side. Reproduction happens inside each side separately: A children
+come from A parents, and B children come from B parents. The first parent and
+any compatible crossover or gene-join partners are selected with probability
+weighted by `survival_ratio`, with a small floor so zero-score strategies remain
+selectable.
+
+Each parent tracks `children_produced`. When a strategy has helped produce
+`max_children_per_strategy` children, it dies and is removed from the active
+population. For crossover and gene-join children, every participating parent
+gets one child counted.
+
+## Seed Strategies
+
+Generation 0 can be seeded in `config.toml`.
+
+```toml
+[[ga.initial_population_A]]
+id = "A-first-0"
+population = 4
+strategy_type = "first-pattern"
+observed_length = 0
+fallback_index = 0
+index_offset = 0
+occurrence_number = 1
+pattern = [0]
+
+[[ga.initial_population_B]]
+id = "B-first-01"
+population = 4
+strategy_type = "first-pattern"
+observed_length = 0
+fallback_index = 0
+index_offset = 1
+occurrence_number = 2
+pattern = [0, 1]
 ```
 
----
+Seed fields:
 
-## Possible Extensions
+- `population`: number of generation-0 copies to create from the seed.
+- `observed_length`: `0` means unbounded; omit it to sample from `first_pattern_observed_length_min/max`.
+- `fallback_index`: used when the pattern is absent; omit it to sample from `first_pattern_fallback_index_min/max`.
+- `index_offset`: added to the requested occurrence index; omit it to sample from `first_pattern_index_offset_min/max`.
+- `occurrence_number`: which pattern occurrence to use; `1` first, `2` second. Omit it for seeded first-pattern strategies to use `1`.
+- `pattern`: list of bits to search for.
 
-- Analytical derivation of success probabilities
-- Search for optimal patterns
-- Genetic algorithm optimization of strategies
-- Visualization of convergence over trials
-- Comparison between empirical and theoretical results
+The current config has 60 seed blocks per player: 30 first-occurrence seeds and
+30 matching second-occurrence seeds. Their `population` values sum to exactly
+200 initial strategies per player, equal to the configured maximum. If that sum
+is lower than the maximum, the initial seeded population stays lower; it is not
+automatically filled with random strategies.
 
----
+## Mutation Controls
 
-## Author
+These flags freeze parts of first-pattern strategies during mutation:
 
-Igor Nikitin
-# daemon-coin-mathematicians-ga
+```toml
+disable_observed_length_mutation = true
+disable_fallback_index_mutation = true
+```
+
+When disabled, mutation may still change pattern bits, pattern length, and
+`index_offset` according to the configured mutation probabilities.
+
+## Outputs
+
+Each run writes artifacts to `output_dir`:
+
+- `best_pair.json`: final generation best pair.
+- `best_pairs.csv`: best pair per generation.
+- `best_A_strategy.json` and `best_B_strategy.json`: final best individual strategies.
+- `generation_stats.csv`: summary statistics per generation.
+- `experiment_report.html`: plain-language HTML report with the final
+  generation's top 3 distinct strategy pairs.
+- `population_snapshots/`: full population JSON per generation.
+- `score_matrices/`: A/B score matrix per generation.
+
+## Tests
+
+Run the unit suite with:
+
+```bash
+python -m unittest discover -s tests
+```
+
+## Pair Comparison Utility
+
+After a GA run, re-check the top distinct final-generation pairs with fresh
+shared Monte Carlo trials:
+
+```bash
+python compare_strategy_pairs.py ga_output_100_generations_200seed_occurrence1_2_10000_trials_childlimit4 --trials 100000 --seed 1
+```
+
+The utility writes:
+
+- `top_pair_statistical_check.json`
+- `top_pair_statistical_check.csv`
+- `top_pair_statistical_check.html`
+
+It reports each pair's checked score, a 95% confidence interval, and pairwise
+score-difference intervals against the other checked pairs. It also assigns a
+`certainty_group`: pairs in the same group are not statistically separated at
+the selected interval width, so the honest result may be a partial ranking
+rather than a forced 1/2/3 order.
+
+For a more reliable check, run sequentially. This evaluates in batches and stops
+when the full checked ranking is statistically separated, or when the trial
+budget is exhausted:
+
+```bash
+python compare_strategy_pairs.py ga_output_100_generations_200seed_occurrence1_2_10000_trials_childlimit4 --sequential --max-trials 1000000 --batch-size 100000 --seed 1
+```
+
+For a five-sigma certainty threshold, add `--sigma 5`:
+
+```bash
+python compare_strategy_pairs.py ga_output_100_generations_200seed_occurrence1_2_10000_trials_childlimit4 --sequential --max-trials 5000000 --batch-size 100000 --sigma 5 --seed 1
+```
+
+See [RUN_EXAMPLE.md](RUN_EXAMPLE.md) for a complete recorded run, including
+100 GA generations and a 10,000,000-trial 5-sigma comparison.
+
+## Notes
+
+- Results are Monte Carlo estimates, not formal proofs.
+- Larger populations and more trials reduce noise but increase runtime.
+- The evaluator deduplicates identical strategy definitions during scoring, so
+  seed copies can weight selection without repeating all equivalent pair
+  calculations.

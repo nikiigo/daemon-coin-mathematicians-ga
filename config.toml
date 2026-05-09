@@ -1,0 +1,1325 @@
+[ga]
+# Maximum number of strategies allowed for Player A.
+population_size_A = 200
+
+# Maximum number of strategies allowed for Player B.
+population_size_B = 200
+
+# Minimum observed length for gene-table strategies. For first-pattern this is
+# used as the minimum random pattern length.
+observed_length_min = 3
+
+# Maximum observed length for gene-table strategies. For first-pattern this is
+# used as the maximum random pattern length.
+observed_length_max = 12
+
+# Target choice range is only used by gene-table strategies. For first-pattern,
+# 0 means unbounded and no artificial range cap is applied.
+target_choice_range_min = 0
+
+# Maximum target range for generated gene-table strategies. Keep this 0 while
+# default_strategy_type is "first-pattern".
+target_choice_range_max = 0
+
+# Random observed-length range for generated first-pattern strategies and seed
+# strategies that omit observed_length. 0 means unbounded observation.
+first_pattern_observed_length_min = 0
+first_pattern_observed_length_max = 100
+
+# Random fallback-index range for generated first-pattern strategies and seed
+# strategies that omit fallback_index. Used when the pattern is absent. Seed
+# strategies can still set fallback_index explicitly, and mutation may evolve it.
+first_pattern_fallback_index_min = 0
+first_pattern_fallback_index_max = 10
+
+# Random index-offset range for generated first-pattern strategies and seed
+# strategies that omit index_offset. When the requested pattern occurrence is
+# found, the target index is occurrence index + index_offset, clamped into the
+# sequence.
+first_pattern_index_offset_min = -10
+first_pattern_index_offset_max = 10
+
+# Random occurrence-number range for generated first-pattern strategies. Seed
+# strategies default to 1 when occurrence_number is omitted. 1 means first
+# occurrence, 2 means second occurrence.
+first_pattern_occurrence_min = 1
+first_pattern_occurrence_max = 2
+
+# Monte Carlo trials used to score each A/B strategy pair. Higher values reduce
+# random noise in survival estimates but increase runtime.
+trials_per_pair = 10000
+
+# Finite sequence length used to simulate unbounded first-pattern observation.
+# A first-pattern strategy searches this generated sequence for its pattern.
+sequence_length = 1000
+
+# Number of evolutionary generations to run. Generation 0 is the initial
+# population evaluation.
+generations = 20
+
+# Highest-scoring strategies preserved unchanged in each population.
+elite_count = 2
+
+# Higher values kill weak strategies more aggressively. Recommended value: 2.0.
+selection_pressure = 2.0
+
+# Relative chance that a generated child is created by mutation.
+mutation_rate = 0.65
+
+# Relative chance that a generated child is created by compatible uniform
+# crossover. Compatible partners are selected with survival-ratio weighting.
+crossover_rate = 0.25
+
+# Relative chance that a generated child is created by joining genes/pattern bits
+# from compatible parents. Compatible partners are selected with
+# survival-ratio weighting.
+gene_join_rate = 0.10
+
+# Per-gene or per-pattern-bit mutation probability.
+gene_mutation_probability = 0.05
+
+# Maximum number of children a strategy may produce before it dies and is
+# removed from the active population.
+max_children_per_strategy = 4
+
+# Probability that mutation changes observed_length, and for gene-table
+# strategies also changes target_choice_range by 1.
+structure_mutation_probability = 0.15
+
+# Freeze observed_length during mutation. Seed and random initialization can
+# still assign observed_length.
+disable_observed_length_mutation = true
+
+# Freeze fallback_index during mutation. Seed and random initialization can
+# still assign fallback_index.
+disable_fallback_index_mutation = true
+
+# Small denominator guard used when normalizing survival ratios.
+epsilon = 1e-12
+
+# Success condition. Supported values: "same-bit" and "both-one".
+success_condition = "same-bit"
+
+# Strategy type used for randomly generated population slots. Supported values:
+# "first-pattern" and "gene-table".
+default_strategy_type = "first-pattern"
+
+# Directory where CSV, JSON, score matrices, and population snapshots are saved.
+output_dir = "ga_output"
+
+# Set this to an integer for reproducible runs, or leave it omitted for random runs.
+# seed = 1
+
+# Seed strategies for generation 0. The GA uses these first and fills the rest of
+# each population randomly.
+#
+# Seed fields:
+# - id: human-readable strategy identifier used in reports and artifacts.
+# - population: number of generation-0 copies to create from this strategy.
+# - strategy_type: "first-pattern" or "gene-table".
+# - observed_length: optional for first-pattern; 0 or omitted means unbounded.
+# - target_choice_range: gene-table only; exclusive upper bound for gene values.
+# - fallback_index: optional for first-pattern; used when pattern is absent.
+# - index_offset: optional for first-pattern; added to occurrence index.
+# - occurrence_number: optional for first-pattern; 1 first occurrence, 2 second.
+# - pattern: for first-pattern, the bit pattern to search for.
+# - genes: for gene-table, one target index for each possible observed prefix.
+
+[[ga.initial_population_A]]
+id = "A-first-0"
+strategy_type = "first-pattern"
+population = 4
+observed_length = 0
+fallback_index = 0
+occurrence_number = 1
+index_offset = 2
+pattern = [0]
+
+[[ga.initial_population_B]]
+id = "B-first-0"
+strategy_type = "first-pattern"
+population = 4
+observed_length = 0
+fallback_index = 0
+occurrence_number = 1
+index_offset = 2
+pattern = [0]
+
+[[ga.initial_population_A]]
+id = "A-first-1"
+strategy_type = "first-pattern"
+population = 4
+observed_length = 0
+fallback_index = 0
+occurrence_number = 1
+index_offset = 2
+pattern = [1]
+
+[[ga.initial_population_B]]
+id = "B-first-1"
+strategy_type = "first-pattern"
+population = 4
+observed_length = 0
+fallback_index = 0
+occurrence_number = 1
+index_offset = 2
+pattern = [1]
+
+[[ga.initial_population_A]]
+id = "A-first-00"
+strategy_type = "first-pattern"
+population = 4
+observed_length = 0
+fallback_index = 0
+occurrence_number = 1
+index_offset = 2
+pattern = [0, 0]
+
+[[ga.initial_population_B]]
+id = "B-first-00"
+strategy_type = "first-pattern"
+population = 4
+observed_length = 0
+fallback_index = 0
+occurrence_number = 1
+index_offset = 2
+pattern = [0, 0]
+
+[[ga.initial_population_A]]
+id = "A-first-01"
+strategy_type = "first-pattern"
+population = 4
+observed_length = 0
+fallback_index = 0
+occurrence_number = 1
+index_offset = 2
+pattern = [0, 1]
+
+[[ga.initial_population_B]]
+id = "B-first-01"
+strategy_type = "first-pattern"
+population = 4
+observed_length = 0
+fallback_index = 0
+occurrence_number = 1
+index_offset = 2
+pattern = [0, 1]
+
+[[ga.initial_population_A]]
+id = "A-first-10"
+strategy_type = "first-pattern"
+population = 4
+observed_length = 0
+fallback_index = 0
+occurrence_number = 1
+index_offset = 1
+pattern = [1, 0]
+
+[[ga.initial_population_B]]
+id = "B-first-10"
+strategy_type = "first-pattern"
+population = 4
+observed_length = 0
+fallback_index = 0
+occurrence_number = 1
+index_offset = 1
+pattern = [1, 0]
+
+[[ga.initial_population_A]]
+id = "A-first-11"
+strategy_type = "first-pattern"
+population = 4
+observed_length = 0
+fallback_index = 0
+occurrence_number = 1
+index_offset = 0
+pattern = [1, 1]
+
+[[ga.initial_population_B]]
+id = "B-first-11"
+strategy_type = "first-pattern"
+population = 4
+observed_length = 0
+fallback_index = 0
+occurrence_number = 1
+index_offset = 0
+pattern = [1, 1]
+
+[[ga.initial_population_A]]
+id = "A-first-000"
+strategy_type = "first-pattern"
+population = 4
+observed_length = 0
+fallback_index = 0
+occurrence_number = 1
+index_offset = 0
+pattern = [0, 0, 0]
+
+[[ga.initial_population_B]]
+id = "B-first-000"
+strategy_type = "first-pattern"
+population = 4
+observed_length = 0
+fallback_index = 0
+occurrence_number = 1
+index_offset = 0
+pattern = [0, 0, 0]
+
+[[ga.initial_population_A]]
+id = "A-first-001"
+strategy_type = "first-pattern"
+population = 4
+observed_length = 0
+fallback_index = 0
+occurrence_number = 1
+index_offset = 0
+pattern = [0, 0, 1]
+
+[[ga.initial_population_B]]
+id = "B-first-001"
+strategy_type = "first-pattern"
+population = 4
+observed_length = 0
+fallback_index = 0
+occurrence_number = 1
+index_offset = 0
+pattern = [0, 0, 1]
+
+[[ga.initial_population_A]]
+id = "A-first-010"
+strategy_type = "first-pattern"
+population = 4
+observed_length = 0
+fallback_index = 0
+occurrence_number = 1
+index_offset = 0
+pattern = [0, 1, 0]
+
+[[ga.initial_population_B]]
+id = "B-first-010"
+strategy_type = "first-pattern"
+population = 4
+observed_length = 0
+fallback_index = 0
+occurrence_number = 1
+index_offset = 0
+pattern = [0, 1, 0]
+
+[[ga.initial_population_A]]
+id = "A-first-011"
+strategy_type = "first-pattern"
+population = 4
+observed_length = 0
+fallback_index = 0
+occurrence_number = 1
+index_offset = 0
+pattern = [0, 1, 1]
+
+[[ga.initial_population_B]]
+id = "B-first-011"
+strategy_type = "first-pattern"
+population = 4
+observed_length = 0
+fallback_index = 0
+occurrence_number = 1
+index_offset = 0
+pattern = [0, 1, 1]
+
+[[ga.initial_population_A]]
+id = "A-first-100"
+strategy_type = "first-pattern"
+population = 3
+observed_length = 0
+fallback_index = 0
+occurrence_number = 1
+index_offset = 2
+pattern = [1, 0, 0]
+
+[[ga.initial_population_B]]
+id = "B-first-100"
+strategy_type = "first-pattern"
+population = 3
+observed_length = 0
+fallback_index = 0
+occurrence_number = 1
+index_offset = 2
+pattern = [1, 0, 0]
+
+[[ga.initial_population_A]]
+id = "A-first-101"
+strategy_type = "first-pattern"
+population = 3
+observed_length = 0
+fallback_index = 0
+occurrence_number = 1
+index_offset = 2
+pattern = [1, 0, 1]
+
+[[ga.initial_population_B]]
+id = "B-first-101"
+strategy_type = "first-pattern"
+population = 3
+observed_length = 0
+fallback_index = 0
+occurrence_number = 1
+index_offset = 2
+pattern = [1, 0, 1]
+
+[[ga.initial_population_A]]
+id = "A-first-110"
+strategy_type = "first-pattern"
+population = 3
+observed_length = 0
+fallback_index = 0
+occurrence_number = 1
+index_offset = 2
+pattern = [1, 1, 0]
+
+[[ga.initial_population_B]]
+id = "B-first-110"
+strategy_type = "first-pattern"
+population = 3
+observed_length = 0
+fallback_index = 0
+occurrence_number = 1
+index_offset = 2
+pattern = [1, 1, 0]
+
+[[ga.initial_population_A]]
+id = "A-first-111"
+strategy_type = "first-pattern"
+population = 3
+observed_length = 0
+fallback_index = 0
+occurrence_number = 1
+index_offset = 1
+pattern = [1, 1, 1]
+
+[[ga.initial_population_B]]
+id = "B-first-111"
+strategy_type = "first-pattern"
+population = 3
+observed_length = 0
+fallback_index = 0
+occurrence_number = 1
+index_offset = 1
+pattern = [1, 1, 1]
+
+[[ga.initial_population_A]]
+id = "A-first-0000"
+strategy_type = "first-pattern"
+population = 3
+observed_length = 0
+fallback_index = 0
+occurrence_number = 1
+index_offset = 1
+pattern = [0, 0, 0, 0]
+
+[[ga.initial_population_B]]
+id = "B-first-0000"
+strategy_type = "first-pattern"
+population = 3
+observed_length = 0
+fallback_index = 0
+occurrence_number = 1
+index_offset = 1
+pattern = [0, 0, 0, 0]
+
+[[ga.initial_population_A]]
+id = "A-first-0001"
+strategy_type = "first-pattern"
+population = 3
+observed_length = 0
+fallback_index = 0
+occurrence_number = 1
+index_offset = 1
+pattern = [0, 0, 0, 1]
+
+[[ga.initial_population_B]]
+id = "B-first-0001"
+strategy_type = "first-pattern"
+population = 3
+observed_length = 0
+fallback_index = 0
+occurrence_number = 1
+index_offset = 1
+pattern = [0, 0, 0, 1]
+
+[[ga.initial_population_A]]
+id = "A-first-0010"
+strategy_type = "first-pattern"
+population = 3
+observed_length = 0
+fallback_index = 0
+occurrence_number = 1
+index_offset = 1
+pattern = [0, 0, 1, 0]
+
+[[ga.initial_population_B]]
+id = "B-first-0010"
+strategy_type = "first-pattern"
+population = 3
+observed_length = 0
+fallback_index = 0
+occurrence_number = 1
+index_offset = 1
+pattern = [0, 0, 1, 0]
+
+[[ga.initial_population_A]]
+id = "A-first-0011"
+strategy_type = "first-pattern"
+population = 3
+observed_length = 0
+fallback_index = 0
+occurrence_number = 1
+index_offset = 1
+pattern = [0, 0, 1, 1]
+
+[[ga.initial_population_B]]
+id = "B-first-0011"
+strategy_type = "first-pattern"
+population = 3
+observed_length = 0
+fallback_index = 0
+occurrence_number = 1
+index_offset = 1
+pattern = [0, 0, 1, 1]
+
+[[ga.initial_population_A]]
+id = "A-first-0100"
+strategy_type = "first-pattern"
+population = 3
+observed_length = 0
+fallback_index = 0
+occurrence_number = 1
+index_offset = 1
+pattern = [0, 1, 0, 0]
+
+[[ga.initial_population_B]]
+id = "B-first-0100"
+strategy_type = "first-pattern"
+population = 3
+observed_length = 0
+fallback_index = 0
+occurrence_number = 1
+index_offset = 1
+pattern = [0, 1, 0, 0]
+
+[[ga.initial_population_A]]
+id = "A-first-0101"
+strategy_type = "first-pattern"
+population = 3
+observed_length = 0
+fallback_index = 0
+occurrence_number = 1
+index_offset = 1
+pattern = [0, 1, 0, 1]
+
+[[ga.initial_population_B]]
+id = "B-first-0101"
+strategy_type = "first-pattern"
+population = 3
+observed_length = 0
+fallback_index = 0
+occurrence_number = 1
+index_offset = 1
+pattern = [0, 1, 0, 1]
+
+[[ga.initial_population_A]]
+id = "A-first-0110"
+strategy_type = "first-pattern"
+population = 3
+observed_length = 0
+fallback_index = 0
+occurrence_number = 1
+index_offset = 0
+pattern = [0, 1, 1, 0]
+
+[[ga.initial_population_B]]
+id = "B-first-0110"
+strategy_type = "first-pattern"
+population = 3
+observed_length = 0
+fallback_index = 0
+occurrence_number = 1
+index_offset = 0
+pattern = [0, 1, 1, 0]
+
+[[ga.initial_population_A]]
+id = "A-first-0111"
+strategy_type = "first-pattern"
+population = 3
+observed_length = 0
+fallback_index = 0
+occurrence_number = 1
+index_offset = 0
+pattern = [0, 1, 1, 1]
+
+[[ga.initial_population_B]]
+id = "B-first-0111"
+strategy_type = "first-pattern"
+population = 3
+observed_length = 0
+fallback_index = 0
+occurrence_number = 1
+index_offset = 0
+pattern = [0, 1, 1, 1]
+
+[[ga.initial_population_A]]
+id = "A-first-1000"
+strategy_type = "first-pattern"
+population = 3
+observed_length = 0
+fallback_index = 0
+occurrence_number = 1
+index_offset = 0
+pattern = [1, 0, 0, 0]
+
+[[ga.initial_population_B]]
+id = "B-first-1000"
+strategy_type = "first-pattern"
+population = 3
+observed_length = 0
+fallback_index = 0
+occurrence_number = 1
+index_offset = 0
+pattern = [1, 0, 0, 0]
+
+[[ga.initial_population_A]]
+id = "A-first-1001"
+strategy_type = "first-pattern"
+population = 3
+observed_length = 0
+fallback_index = 0
+occurrence_number = 1
+index_offset = 0
+pattern = [1, 0, 0, 1]
+
+[[ga.initial_population_B]]
+id = "B-first-1001"
+strategy_type = "first-pattern"
+population = 3
+observed_length = 0
+fallback_index = 0
+occurrence_number = 1
+index_offset = 0
+pattern = [1, 0, 0, 1]
+
+[[ga.initial_population_A]]
+id = "A-first-1010"
+strategy_type = "first-pattern"
+population = 3
+observed_length = 0
+fallback_index = 0
+occurrence_number = 1
+index_offset = 0
+pattern = [1, 0, 1, 0]
+
+[[ga.initial_population_B]]
+id = "B-first-1010"
+strategy_type = "first-pattern"
+population = 3
+observed_length = 0
+fallback_index = 0
+occurrence_number = 1
+index_offset = 0
+pattern = [1, 0, 1, 0]
+
+[[ga.initial_population_A]]
+id = "A-first-1011"
+strategy_type = "first-pattern"
+population = 3
+observed_length = 0
+fallback_index = 0
+occurrence_number = 1
+index_offset = 0
+pattern = [1, 0, 1, 1]
+
+[[ga.initial_population_B]]
+id = "B-first-1011"
+strategy_type = "first-pattern"
+population = 3
+observed_length = 0
+fallback_index = 0
+occurrence_number = 1
+index_offset = 0
+pattern = [1, 0, 1, 1]
+
+[[ga.initial_population_A]]
+id = "A-first-1100"
+strategy_type = "first-pattern"
+population = 3
+observed_length = 0
+fallback_index = 0
+occurrence_number = 1
+index_offset = 0
+pattern = [1, 1, 0, 0]
+
+[[ga.initial_population_B]]
+id = "B-first-1100"
+strategy_type = "first-pattern"
+population = 3
+observed_length = 0
+fallback_index = 0
+occurrence_number = 1
+index_offset = 0
+pattern = [1, 1, 0, 0]
+
+[[ga.initial_population_A]]
+id = "A-first-1101"
+strategy_type = "first-pattern"
+population = 3
+observed_length = 0
+fallback_index = 0
+occurrence_number = 1
+index_offset = 0
+pattern = [1, 1, 0, 1]
+
+[[ga.initial_population_B]]
+id = "B-first-1101"
+strategy_type = "first-pattern"
+population = 3
+observed_length = 0
+fallback_index = 0
+occurrence_number = 1
+index_offset = 0
+pattern = [1, 1, 0, 1]
+
+[[ga.initial_population_A]]
+id = "A-first-1110"
+strategy_type = "first-pattern"
+population = 3
+observed_length = 0
+fallback_index = 0
+occurrence_number = 1
+index_offset = 0
+pattern = [1, 1, 1, 0]
+
+[[ga.initial_population_B]]
+id = "B-first-1110"
+strategy_type = "first-pattern"
+population = 3
+observed_length = 0
+fallback_index = 0
+occurrence_number = 1
+index_offset = 0
+pattern = [1, 1, 1, 0]
+
+[[ga.initial_population_A]]
+id = "A-first-1111"
+strategy_type = "first-pattern"
+population = 3
+observed_length = 0
+fallback_index = 0
+occurrence_number = 1
+index_offset = 0
+pattern = [1, 1, 1, 1]
+
+[[ga.initial_population_B]]
+id = "B-first-1111"
+strategy_type = "first-pattern"
+population = 3
+observed_length = 0
+fallback_index = 0
+occurrence_number = 1
+index_offset = 0
+pattern = [1, 1, 1, 1]
+[[ga.initial_population_A]]
+id = "A-second-0"
+strategy_type = "first-pattern"
+population = 4
+observed_length = 0
+fallback_index = 0
+occurrence_number = 2
+index_offset = 2
+pattern = [0]
+
+[[ga.initial_population_B]]
+id = "B-second-0"
+strategy_type = "first-pattern"
+population = 4
+observed_length = 0
+fallback_index = 0
+occurrence_number = 2
+index_offset = 2
+pattern = [0]
+
+[[ga.initial_population_A]]
+id = "A-second-1"
+strategy_type = "first-pattern"
+population = 4
+observed_length = 0
+fallback_index = 0
+occurrence_number = 2
+index_offset = 2
+pattern = [1]
+
+[[ga.initial_population_B]]
+id = "B-second-1"
+strategy_type = "first-pattern"
+population = 4
+observed_length = 0
+fallback_index = 0
+occurrence_number = 2
+index_offset = 2
+pattern = [1]
+
+[[ga.initial_population_A]]
+id = "A-second-00"
+strategy_type = "first-pattern"
+population = 4
+observed_length = 0
+fallback_index = 0
+occurrence_number = 2
+index_offset = 2
+pattern = [0, 0]
+
+[[ga.initial_population_B]]
+id = "B-second-00"
+strategy_type = "first-pattern"
+population = 4
+observed_length = 0
+fallback_index = 0
+occurrence_number = 2
+index_offset = 2
+pattern = [0, 0]
+
+[[ga.initial_population_A]]
+id = "A-second-01"
+strategy_type = "first-pattern"
+population = 4
+observed_length = 0
+fallback_index = 0
+occurrence_number = 2
+index_offset = 2
+pattern = [0, 1]
+
+[[ga.initial_population_B]]
+id = "B-second-01"
+strategy_type = "first-pattern"
+population = 4
+observed_length = 0
+fallback_index = 0
+occurrence_number = 2
+index_offset = 2
+pattern = [0, 1]
+
+[[ga.initial_population_A]]
+id = "A-second-10"
+strategy_type = "first-pattern"
+population = 4
+observed_length = 0
+fallback_index = 0
+occurrence_number = 2
+index_offset = 1
+pattern = [1, 0]
+
+[[ga.initial_population_B]]
+id = "B-second-10"
+strategy_type = "first-pattern"
+population = 4
+observed_length = 0
+fallback_index = 0
+occurrence_number = 2
+index_offset = 1
+pattern = [1, 0]
+
+[[ga.initial_population_A]]
+id = "A-second-11"
+strategy_type = "first-pattern"
+population = 4
+observed_length = 0
+fallback_index = 0
+occurrence_number = 2
+index_offset = 0
+pattern = [1, 1]
+
+[[ga.initial_population_B]]
+id = "B-second-11"
+strategy_type = "first-pattern"
+population = 4
+observed_length = 0
+fallback_index = 0
+occurrence_number = 2
+index_offset = 0
+pattern = [1, 1]
+
+[[ga.initial_population_A]]
+id = "A-second-000"
+strategy_type = "first-pattern"
+population = 4
+observed_length = 0
+fallback_index = 0
+occurrence_number = 2
+index_offset = 0
+pattern = [0, 0, 0]
+
+[[ga.initial_population_B]]
+id = "B-second-000"
+strategy_type = "first-pattern"
+population = 4
+observed_length = 0
+fallback_index = 0
+occurrence_number = 2
+index_offset = 0
+pattern = [0, 0, 0]
+
+[[ga.initial_population_A]]
+id = "A-second-001"
+strategy_type = "first-pattern"
+population = 4
+observed_length = 0
+fallback_index = 0
+occurrence_number = 2
+index_offset = 0
+pattern = [0, 0, 1]
+
+[[ga.initial_population_B]]
+id = "B-second-001"
+strategy_type = "first-pattern"
+population = 4
+observed_length = 0
+fallback_index = 0
+occurrence_number = 2
+index_offset = 0
+pattern = [0, 0, 1]
+
+[[ga.initial_population_A]]
+id = "A-second-010"
+strategy_type = "first-pattern"
+population = 4
+observed_length = 0
+fallback_index = 0
+occurrence_number = 2
+index_offset = 0
+pattern = [0, 1, 0]
+
+[[ga.initial_population_B]]
+id = "B-second-010"
+strategy_type = "first-pattern"
+population = 4
+observed_length = 0
+fallback_index = 0
+occurrence_number = 2
+index_offset = 0
+pattern = [0, 1, 0]
+
+[[ga.initial_population_A]]
+id = "A-second-011"
+strategy_type = "first-pattern"
+population = 4
+observed_length = 0
+fallback_index = 0
+occurrence_number = 2
+index_offset = 0
+pattern = [0, 1, 1]
+
+[[ga.initial_population_B]]
+id = "B-second-011"
+strategy_type = "first-pattern"
+population = 4
+observed_length = 0
+fallback_index = 0
+occurrence_number = 2
+index_offset = 0
+pattern = [0, 1, 1]
+
+[[ga.initial_population_A]]
+id = "A-second-100"
+strategy_type = "first-pattern"
+population = 3
+observed_length = 0
+fallback_index = 0
+occurrence_number = 2
+index_offset = 2
+pattern = [1, 0, 0]
+
+[[ga.initial_population_B]]
+id = "B-second-100"
+strategy_type = "first-pattern"
+population = 3
+observed_length = 0
+fallback_index = 0
+occurrence_number = 2
+index_offset = 2
+pattern = [1, 0, 0]
+
+[[ga.initial_population_A]]
+id = "A-second-101"
+strategy_type = "first-pattern"
+population = 3
+observed_length = 0
+fallback_index = 0
+occurrence_number = 2
+index_offset = 2
+pattern = [1, 0, 1]
+
+[[ga.initial_population_B]]
+id = "B-second-101"
+strategy_type = "first-pattern"
+population = 3
+observed_length = 0
+fallback_index = 0
+occurrence_number = 2
+index_offset = 2
+pattern = [1, 0, 1]
+
+[[ga.initial_population_A]]
+id = "A-second-110"
+strategy_type = "first-pattern"
+population = 3
+observed_length = 0
+fallback_index = 0
+occurrence_number = 2
+index_offset = 2
+pattern = [1, 1, 0]
+
+[[ga.initial_population_B]]
+id = "B-second-110"
+strategy_type = "first-pattern"
+population = 3
+observed_length = 0
+fallback_index = 0
+occurrence_number = 2
+index_offset = 2
+pattern = [1, 1, 0]
+
+[[ga.initial_population_A]]
+id = "A-second-111"
+strategy_type = "first-pattern"
+population = 3
+observed_length = 0
+fallback_index = 0
+occurrence_number = 2
+index_offset = 1
+pattern = [1, 1, 1]
+
+[[ga.initial_population_B]]
+id = "B-second-111"
+strategy_type = "first-pattern"
+population = 3
+observed_length = 0
+fallback_index = 0
+occurrence_number = 2
+index_offset = 1
+pattern = [1, 1, 1]
+
+[[ga.initial_population_A]]
+id = "A-second-0000"
+strategy_type = "first-pattern"
+population = 3
+observed_length = 0
+fallback_index = 0
+occurrence_number = 2
+index_offset = 1
+pattern = [0, 0, 0, 0]
+
+[[ga.initial_population_B]]
+id = "B-second-0000"
+strategy_type = "first-pattern"
+population = 3
+observed_length = 0
+fallback_index = 0
+occurrence_number = 2
+index_offset = 1
+pattern = [0, 0, 0, 0]
+
+[[ga.initial_population_A]]
+id = "A-second-0001"
+strategy_type = "first-pattern"
+population = 3
+observed_length = 0
+fallback_index = 0
+occurrence_number = 2
+index_offset = 1
+pattern = [0, 0, 0, 1]
+
+[[ga.initial_population_B]]
+id = "B-second-0001"
+strategy_type = "first-pattern"
+population = 3
+observed_length = 0
+fallback_index = 0
+occurrence_number = 2
+index_offset = 1
+pattern = [0, 0, 0, 1]
+
+[[ga.initial_population_A]]
+id = "A-second-0010"
+strategy_type = "first-pattern"
+population = 3
+observed_length = 0
+fallback_index = 0
+occurrence_number = 2
+index_offset = 1
+pattern = [0, 0, 1, 0]
+
+[[ga.initial_population_B]]
+id = "B-second-0010"
+strategy_type = "first-pattern"
+population = 3
+observed_length = 0
+fallback_index = 0
+occurrence_number = 2
+index_offset = 1
+pattern = [0, 0, 1, 0]
+
+[[ga.initial_population_A]]
+id = "A-second-0011"
+strategy_type = "first-pattern"
+population = 3
+observed_length = 0
+fallback_index = 0
+occurrence_number = 2
+index_offset = 1
+pattern = [0, 0, 1, 1]
+
+[[ga.initial_population_B]]
+id = "B-second-0011"
+strategy_type = "first-pattern"
+population = 3
+observed_length = 0
+fallback_index = 0
+occurrence_number = 2
+index_offset = 1
+pattern = [0, 0, 1, 1]
+
+[[ga.initial_population_A]]
+id = "A-second-0100"
+strategy_type = "first-pattern"
+population = 3
+observed_length = 0
+fallback_index = 0
+occurrence_number = 2
+index_offset = 1
+pattern = [0, 1, 0, 0]
+
+[[ga.initial_population_B]]
+id = "B-second-0100"
+strategy_type = "first-pattern"
+population = 3
+observed_length = 0
+fallback_index = 0
+occurrence_number = 2
+index_offset = 1
+pattern = [0, 1, 0, 0]
+
+[[ga.initial_population_A]]
+id = "A-second-0101"
+strategy_type = "first-pattern"
+population = 3
+observed_length = 0
+fallback_index = 0
+occurrence_number = 2
+index_offset = 1
+pattern = [0, 1, 0, 1]
+
+[[ga.initial_population_B]]
+id = "B-second-0101"
+strategy_type = "first-pattern"
+population = 3
+observed_length = 0
+fallback_index = 0
+occurrence_number = 2
+index_offset = 1
+pattern = [0, 1, 0, 1]
+
+[[ga.initial_population_A]]
+id = "A-second-0110"
+strategy_type = "first-pattern"
+population = 3
+observed_length = 0
+fallback_index = 0
+occurrence_number = 2
+index_offset = 0
+pattern = [0, 1, 1, 0]
+
+[[ga.initial_population_B]]
+id = "B-second-0110"
+strategy_type = "first-pattern"
+population = 3
+observed_length = 0
+fallback_index = 0
+occurrence_number = 2
+index_offset = 0
+pattern = [0, 1, 1, 0]
+
+[[ga.initial_population_A]]
+id = "A-second-0111"
+strategy_type = "first-pattern"
+population = 3
+observed_length = 0
+fallback_index = 0
+occurrence_number = 2
+index_offset = 0
+pattern = [0, 1, 1, 1]
+
+[[ga.initial_population_B]]
+id = "B-second-0111"
+strategy_type = "first-pattern"
+population = 3
+observed_length = 0
+fallback_index = 0
+occurrence_number = 2
+index_offset = 0
+pattern = [0, 1, 1, 1]
+
+[[ga.initial_population_A]]
+id = "A-second-1000"
+strategy_type = "first-pattern"
+population = 3
+observed_length = 0
+fallback_index = 0
+occurrence_number = 2
+index_offset = 0
+pattern = [1, 0, 0, 0]
+
+[[ga.initial_population_B]]
+id = "B-second-1000"
+strategy_type = "first-pattern"
+population = 3
+observed_length = 0
+fallback_index = 0
+occurrence_number = 2
+index_offset = 0
+pattern = [1, 0, 0, 0]
+
+[[ga.initial_population_A]]
+id = "A-second-1001"
+strategy_type = "first-pattern"
+population = 3
+observed_length = 0
+fallback_index = 0
+occurrence_number = 2
+index_offset = 0
+pattern = [1, 0, 0, 1]
+
+[[ga.initial_population_B]]
+id = "B-second-1001"
+strategy_type = "first-pattern"
+population = 3
+observed_length = 0
+fallback_index = 0
+occurrence_number = 2
+index_offset = 0
+pattern = [1, 0, 0, 1]
+
+[[ga.initial_population_A]]
+id = "A-second-1010"
+strategy_type = "first-pattern"
+population = 3
+observed_length = 0
+fallback_index = 0
+occurrence_number = 2
+index_offset = 0
+pattern = [1, 0, 1, 0]
+
+[[ga.initial_population_B]]
+id = "B-second-1010"
+strategy_type = "first-pattern"
+population = 3
+observed_length = 0
+fallback_index = 0
+occurrence_number = 2
+index_offset = 0
+pattern = [1, 0, 1, 0]
+
+[[ga.initial_population_A]]
+id = "A-second-1011"
+strategy_type = "first-pattern"
+population = 3
+observed_length = 0
+fallback_index = 0
+occurrence_number = 2
+index_offset = 0
+pattern = [1, 0, 1, 1]
+
+[[ga.initial_population_B]]
+id = "B-second-1011"
+strategy_type = "first-pattern"
+population = 3
+observed_length = 0
+fallback_index = 0
+occurrence_number = 2
+index_offset = 0
+pattern = [1, 0, 1, 1]
+
+[[ga.initial_population_A]]
+id = "A-second-1100"
+strategy_type = "first-pattern"
+population = 3
+observed_length = 0
+fallback_index = 0
+occurrence_number = 2
+index_offset = 0
+pattern = [1, 1, 0, 0]
+
+[[ga.initial_population_B]]
+id = "B-second-1100"
+strategy_type = "first-pattern"
+population = 3
+observed_length = 0
+fallback_index = 0
+occurrence_number = 2
+index_offset = 0
+pattern = [1, 1, 0, 0]
+
+[[ga.initial_population_A]]
+id = "A-second-1101"
+strategy_type = "first-pattern"
+population = 3
+observed_length = 0
+fallback_index = 0
+occurrence_number = 2
+index_offset = 0
+pattern = [1, 1, 0, 1]
+
+[[ga.initial_population_B]]
+id = "B-second-1101"
+strategy_type = "first-pattern"
+population = 3
+observed_length = 0
+fallback_index = 0
+occurrence_number = 2
+index_offset = 0
+pattern = [1, 1, 0, 1]
+
+[[ga.initial_population_A]]
+id = "A-second-1110"
+strategy_type = "first-pattern"
+population = 3
+observed_length = 0
+fallback_index = 0
+occurrence_number = 2
+index_offset = 0
+pattern = [1, 1, 1, 0]
+
+[[ga.initial_population_B]]
+id = "B-second-1110"
+strategy_type = "first-pattern"
+population = 3
+observed_length = 0
+fallback_index = 0
+occurrence_number = 2
+index_offset = 0
+pattern = [1, 1, 1, 0]
+
+[[ga.initial_population_A]]
+id = "A-second-1111"
+strategy_type = "first-pattern"
+population = 3
+observed_length = 0
+fallback_index = 0
+occurrence_number = 2
+index_offset = 0
+pattern = [1, 1, 1, 1]
+
+[[ga.initial_population_B]]
+id = "B-second-1111"
+strategy_type = "first-pattern"
+population = 3
+observed_length = 0
+fallback_index = 0
+occurrence_number = 2
+index_offset = 0
+pattern = [1, 1, 1, 1]

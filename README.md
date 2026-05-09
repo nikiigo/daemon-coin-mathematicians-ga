@@ -2,9 +2,22 @@
 
 Genetic algorithm experiments for the daemon coin coordination problem.
 
-Two players see separate random binary sequences. Each player must choose an
-index in the other player's hidden sequence. A pair survives when the selected
-bits match. The program estimates strategy quality with Monte Carlo trials and
+## Mathematical Problem
+
+There is an infinite random binary sequence.
+
+One player sees the entire subsequence of bits at even positions, while the
+other player sees the entire subsequence of bits at odd positions.
+
+Before seeing the sequences, the players are allowed to agree on a common
+strategy. After the sequences are revealed, no communication is possible.
+
+Each player must independently choose an index in the other player's sequence.
+If the bit values at the chosen positions are equal, both players survive. If
+not, both die.
+
+The simulator represents the even and odd subsequences as two separate random
+binary sequences. It estimates strategy quality with Monte Carlo trials and
 evolves strategy populations over generations.
 
 ## Current Strategy Model
